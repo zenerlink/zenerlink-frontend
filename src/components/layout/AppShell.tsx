@@ -104,30 +104,32 @@ export function AppShell({
         </header>
 
         <div className="border-b border-zener-border bg-black/35 px-4 py-4 lg:px-8">
-          <section className="rounded-lg border border-zener-border bg-zener-panel/55 p-4">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-              <div className="flex items-center gap-4">
-                <div className="grid h-12 w-12 place-items-center rounded-full bg-zener-gold/14 text-zener-gold">
+          <section className="rounded-lg border border-zener-border bg-zener-panel/55 px-4 py-3">
+            <div className="grid gap-4 xl:grid-cols-[minmax(280px,1fr)_auto] xl:items-center">
+              <div className="flex min-w-0 items-center gap-4">
+                <div className="grid h-12 w-12 shrink-0 place-items-center rounded-md bg-zener-gold/14 text-zener-gold">
                   <Building2 size={22} />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="font-black">{selectedMeter.providerName}</h2>
+                    <h2 className="truncate font-black">{selectedMeter.providerName}</h2>
                     <span className="rounded-full border border-zener-gold/30 bg-zener-gold/10 px-2 py-0.5 text-xs font-bold text-zener-gold">
                       {selectedMeter.meterType}
                     </span>
                   </div>
-                  <p className="mt-1 text-xs text-white/45">{selectedMeter.address}</p>
+                  <p className="mt-1 truncate text-xs text-white/45">{selectedMeter.address}</p>
                 </div>
               </div>
-              <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[520px]">
-                <HeaderMetric icon={Wallet} label="Available" value={formatCurrency(walletBalance)} />
-                <HeaderMetric icon={Activity} label="Reserve" value={`${selectedMeter.kwhReserve.toFixed(1)} kWh`} />
-                <HeaderMetric icon={LayoutGrid} label="Meters" value={`${metersCount} active`} />
+              <div className="flex flex-col gap-3 sm:flex-row xl:justify-end">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <HeaderMetric icon={Wallet} label="Available" value={formatCurrency(walletBalance)} />
+                  <HeaderMetric icon={Activity} label="Reserve" value={`${selectedMeter.kwhReserve.toFixed(1)} kWh`} />
+                  <HeaderMetric icon={LayoutGrid} label="Meters" value={`${metersCount} active`} />
+                </div>
+                <button className="hidden h-10 w-10 shrink-0 place-items-center rounded-md border border-zener-border text-white/55 transition hover:border-zener-gold/50 hover:text-zener-gold xl:grid" aria-label="Account menu">
+                  <ChevronDown size={18} />
+                </button>
               </div>
-              <button className="hidden text-white/55 transition hover:text-zener-gold xl:block" aria-label="Account menu">
-                <ChevronDown size={20} />
-              </button>
             </div>
           </section>
         </div>
@@ -159,7 +161,7 @@ export function AppShell({
 
 function HeaderMetric({ icon: Icon, label, value }: { icon: ElementType; label: string; value: string }) {
   return (
-    <div className="rounded-md border border-zener-border bg-black/20 px-3 py-2">
+    <div className="min-w-[150px] rounded-md border border-zener-border bg-black/20 px-3 py-2">
       <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-white/35">
         <Icon size={14} className="text-zener-gold" />
         {label}
