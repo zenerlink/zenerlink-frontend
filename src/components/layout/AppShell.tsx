@@ -1,8 +1,10 @@
 import type { ElementType, ReactNode } from 'react';
-import { Activity, Home, LayoutGrid, LogOut, Repeat, UserRound } from 'lucide-react';
+import { Activity, Building2, ChevronDown, Home, LayoutGrid, LogOut, Repeat, UserRound, Wallet } from 'lucide-react';
 import { AppLogo } from '../ui/AppLogo';
 import { Button } from '../ui/Button';
 import { StatusDot } from '../ui/StatusDot';
+import { formatCurrency } from '../../lib/format';
+import type { MeterRecord } from '../../types';
 
 export type ZenerPage = 'home' | 'consumption' | 'diu' | 'exchange' | 'profile';
 
@@ -18,10 +20,32 @@ type AppShellProps = {
   activePage: ZenerPage;
   onPageChange: (page: ZenerPage) => void;
   onLogout: () => void;
+  clientEmail: string;
+  clientName: string;
+  walletBalance: number;
+  selectedMeter: MeterRecord;
+  metersCount: number;
   children: ReactNode;
 };
 
-export function AppShell({ activePage, onPageChange, onLogout, children }: AppShellProps) {
+export function AppShell({
+  activePage,
+  onPageChange,
+  onLogout,
+  clientEmail,
+  clientName,
+  walletBalance,
+  selectedMeter,
+  metersCount,
+  children,
+}: AppShellProps) {
+  const initials = clientName
+    .split(' ')
+    .map((name) => name[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[260px_1fr]">
       <aside className="hidden border-r border-zener-border bg-black/55 px-4 py-5 backdrop-blur lg:block">
@@ -31,6 +55,13 @@ export function AppShell({ activePage, onPageChange, onLogout, children }: AppSh
             <p className="text-sm font-black tracking-[0.28em]">ZENERLINK</p>
             <p className="text-xs text-white/42">Electricity OS</p>
           </div>
+        </div>
+        <div className="mb-5 rounded-lg border border-zener-border bg-white/[0.025] p-4 text-center">
+          <div className="mx-auto grid h-14 w-14 place-items-center rounded-full border border-zener-gold/25 bg-zener-gold/12 text-lg font-black text-zener-gold">
+            {initials}
+          </div>
+          <p className="mt-3 font-black">Hello, {clientName.split(' ')[0]}</p>
+          <p className="mt-1 truncate text-xs text-white/45">{clientEmail}</p>
         </div>
         <nav className="space-y-1">
           {nav.map((item) => {
@@ -62,7 +93,7 @@ export function AppShell({ activePage, onPageChange, onLogout, children }: AppSh
           </div>
           <div className="hidden lg:block">
             <p className="text-xs font-bold uppercase tracking-[0.22em] text-white/35">Client workspace</p>
-            <h1 className="text-xl font-black">Hello Myke</h1>
+            <h1 className="text-xl font-black">Hello {clientName.split(' ')[0]}</h1>
           </div>
           <div className="flex items-center gap-2">
             <StatusDot status="lightOn" />
@@ -71,6 +102,35 @@ export function AppShell({ activePage, onPageChange, onLogout, children }: AppSh
             </Button>
           </div>
         </header>
+
+        <div className="border-b border-zener-border bg-black/35 px-4 py-4 lg:px-8">
+          <section className="rounded-lg border border-zener-border bg-zener-panel/55 p-4">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+              <div className="flex items-center gap-4">
+                <div className="grid h-12 w-12 place-items-center rounded-full bg-zener-gold/14 text-zener-gold">
+                  <Building2 size={22} />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="font-black">{selectedMeter.providerName}</h2>
+                    <span className="rounded-full border border-zener-gold/30 bg-zener-gold/10 px-2 py-0.5 text-xs font-bold text-zener-gold">
+                      {selectedMeter.meterType}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-white/45">{selectedMeter.address}</p>
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[520px]">
+                <HeaderMetric icon={Wallet} label="Available" value={formatCurrency(walletBalance)} />
+                <HeaderMetric icon={Activity} label="Reserve" value={`${selectedMeter.kwhReserve.toFixed(1)} kWh`} />
+                <HeaderMetric icon={LayoutGrid} label="Meters" value={`${metersCount} active`} />
+              </div>
+              <button className="hidden text-white/55 transition hover:text-zener-gold xl:block" aria-label="Account menu">
+                <ChevronDown size={20} />
+              </button>
+            </div>
+          </section>
+        </div>
 
         <div className="px-4 py-5 lg:px-8">{children}</div>
 
@@ -93,6 +153,18 @@ export function AppShell({ activePage, onPageChange, onLogout, children }: AppSh
           })}
         </nav>
       </main>
+    </div>
+  );
+}
+
+function HeaderMetric({ icon: Icon, label, value }: { icon: ElementType; label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-zener-border bg-black/20 px-3 py-2">
+      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-white/35">
+        <Icon size={14} className="text-zener-gold" />
+        {label}
+      </div>
+      <p className="mt-1 font-black">{value}</p>
     </div>
   );
 }

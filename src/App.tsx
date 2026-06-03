@@ -176,7 +176,16 @@ export default function App() {
   }
 
   return (
-    <AppShell activePage={activePage} onPageChange={setActivePage} onLogout={() => setSession(null)}>
+    <AppShell
+      activePage={activePage}
+      onPageChange={setActivePage}
+      onLogout={() => setSession(null)}
+      clientEmail={session.email}
+      clientName="Myke Daniels"
+      walletBalance={walletBalance}
+      selectedMeter={selectedMeter}
+      metersCount={meters.length}
+    >
       {activePage === 'home' ? (
         <HomePage
           meters={meters}
@@ -789,13 +798,7 @@ function ActionModals({
         ) : null}
 
         {modal === 'calculator' ? (
-          <div className="space-y-4">
-            <AmountForm amount={amount} setAmount={setAmount} submitLabel="Calculate" onSubmit={() => undefined} />
-            <div className="rounded-lg border border-zener-border bg-black/25 p-4">
-              <p className="text-sm text-white/45">Estimated units</p>
-              <p className="mt-1 text-3xl font-black text-zener-gold">{(Number(amount) / 200 || 0).toFixed(1)} kWh</p>
-            </div>
-          </div>
+          <ElectricityCalculator />
         ) : null}
 
         {modal === 'notifications' ? (
@@ -812,6 +815,120 @@ function ActionModals({
         {message ? <p className="mt-4 rounded-md border border-zener-gold/30 bg-zener-panel px-3 py-2 text-sm font-bold text-zener-gold">{message}</p> : null}
       </Card>
     </div>
+  );
+}
+
+function ElectricityCalculator() {
+  const ratePerKwh = 200;
+  const [input, setInput] = useState('0');
+  const [editingKwh, setEditingKwh] = useState(true);
+
+  const baseValue = Number(input) || 0;
+  const kwhValue = editingKwh ? baseValue : baseValue / ratePerKwh;
+  const nairaValue = editingKwh ? baseValue * ratePerKwh : baseValue;
+  const daysAtAverageUse = kwhValue > 0 ? kwhValue / 8 : 0;
+
+  const onKeyTap = (value: string) => {
+    setInput((current) => {
+      if (value === 'C') return '0';
+      if (value === 'DEL') return current.length <= 1 ? '0' : current.slice(0, -1);
+      if (value === '.' && current.includes('.')) return current;
+      if (current === '0' && value !== '.') return value;
+      return `${current}${value}`;
+    });
+  };
+
+  const keypadRows = [
+    ['C', 'DEL', '.'],
+    ['1', '2', '3'],
+    ['4', '5', '6'],
+    ['7', '8', '9'],
+    ['', '0', ''],
+  ];
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-lg border border-zener-border bg-black/30 p-4 text-right">
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-white/35">
+          Enter {editingKwh ? 'kWh' : 'Naira'}
+        </p>
+        <p className="mt-2 break-all text-5xl font-light">{input}</p>
+      </div>
+
+      <div className="grid gap-3">
+        <CalculatorResultTile
+          label="kWh"
+          value={kwhValue.toFixed(2)}
+          active={editingKwh}
+          onClick={() => setEditingKwh(true)}
+        />
+        <CalculatorResultTile
+          label="Naira"
+          value={formatCurrency(nairaValue)}
+          active={!editingKwh}
+          onClick={() => setEditingKwh(false)}
+        />
+      </div>
+
+      <div className="grid gap-3 rounded-lg border border-zener-border bg-black/20 p-4">
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-white/45">Rate</span>
+          <span className="font-bold">1 kWh = {formatCurrency(ratePerKwh)}</span>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-white/45">Estimated household runtime</span>
+          <span className="font-bold">{daysAtAverageUse.toFixed(1)} days at 8 kWh/day</span>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {keypadRows.map((row, rowIndex) => (
+          <div key={rowIndex} className="grid grid-cols-3 gap-3">
+            {row.map((key, keyIndex) =>
+              key ? (
+                <button
+                  key={key}
+                  onClick={() => onKeyTap(key)}
+                  className={`aspect-square rounded-full text-xl font-bold transition ${
+                    key === 'C'
+                      ? 'bg-zener-gold text-black hover:bg-[#d9964f]'
+                      : 'bg-white/[0.06] text-white hover:bg-white/[0.1]'
+                  }`}
+                >
+                  {key}
+                </button>
+              ) : (
+                <span key={`empty-${keyIndex}`} />
+              ),
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CalculatorResultTile({
+  label,
+  value,
+  active,
+  onClick,
+}: {
+  label: string;
+  value: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center justify-between rounded-lg border px-4 py-3 text-left transition ${
+        active ? 'border-zener-gold bg-white/[0.06]' : 'border-zener-border bg-white/[0.03]'
+      }`}
+    >
+      <span className="text-sm font-bold text-white/60">{label}</span>
+      <span className="text-2xl font-medium">{value}</span>
+    </button>
   );
 }
 
