@@ -3,11 +3,22 @@
 // Tokens live in memory; the refresh token is kept in localStorage so a
 // reload stays signed in. Embedded (partner SSO) sessions never persist.
 
-// Defaults to the hosted pilot API; set VITE_API_URL (e.g. http://localhost:8080) for local backends.
-const API_URL =
-  (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || 'https://zieon-api.198.199.65.142.sslip.io';
-
 const params = new URLSearchParams(window.location.search);
+const host = window.location.hostname;
+
+// Production (zenerlink.com) is the buy-only product on the production API;
+// everything else is staging with the full dashboard. Env vars and
+// ?mode=vend (preview the buy-only site on staging) override.
+const PRODUCTION_HOSTS = ['zenerlink.com', 'www.zenerlink.com'];
+export const IS_PRODUCTION = PRODUCTION_HOSTS.includes(host);
+export const APP_MODE: 'vend' | 'full' =
+  (import.meta.env.VITE_APP_MODE as 'vend' | 'full' | undefined) ??
+  (IS_PRODUCTION || params.get('mode') === 'vend' ? 'vend' : 'full');
+
+const API_URL =
+  (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ||
+  (IS_PRODUCTION ? 'https://api.zenerlink.com' : 'https://zieon-api.198.199.65.142.sslip.io');
+
 export const TENANT = params.get('tenant') ?? (import.meta.env.VITE_TENANT as string | undefined) ?? 'zenerlink';
 export const EMBEDDED = params.get('embed') === '1';
 
@@ -188,6 +199,38 @@ export const api = {
   removeRecipient: (meterNumber: string) => request<void>('DELETE', `/v1/recipients/${encodeURIComponent(meterNumber)}`),
   notifications: () => request<{ notifications: Notification[] }>('GET', '/v1/notifications'),
   activity: () => request<{ activity: Activity[] }>('GET', '/v1/activity'),
+};
+
+// ---- Guest checkout (production buy-only site) ----
+export type Disco = { provider_code: string; provider_name: string; min_purchase_kobo: number; max_purchase_kobo: number; service_fee_kobo: number };
+export type PublicMeter = { verified: boolean; customer_name: string; address: string; meter_type: string; message?: string };
+export type GuestOrder = {
+  id: string;
+  key?: string;
+  status: string;
+  provider_code: string;
+  provider_name: string;
+  meter_number: string;
+  meter_type: string;
+  customer_name: string;
+  amount_kobo: number;
+  fee_kobo: number;
+  energy_kwh: number;
+  token: string | null;
+  checkout_url?: string;
+  sandbox: boolean;
+  message?: string;
+  created_at: string;
+};
+
+export const guest = {
+  discos: () => raw<{ discos: Disco[] }>('GET', '/v1/public/discos', undefined, { 'X-Tenant': TENANT }),
+  verify: (provider_code: string, meter_number: string, meter_type: string) =>
+    raw<PublicMeter>('POST', '/v1/public/meters/verify', { provider_code, meter_number, meter_type }, { 'X-Tenant': TENANT }),
+  order: (input: { provider_code: string; meter_number: string; meter_type: string; amount_kobo: number; email: string; phone: string }, idempotencyKey: string) =>
+    raw<GuestOrder>('POST', '/v1/public/orders', input, { 'X-Tenant': TENANT, 'Idempotency-Key': idempotencyKey }),
+  get: (id: string, key: string) =>
+    raw<GuestOrder>('GET', `/v1/public/orders/${encodeURIComponent(id)}?key=${encodeURIComponent(key)}`, undefined, { 'X-Tenant': TENANT }),
 };
 
 export const koboToNaira = (k: number) => k / 100;
