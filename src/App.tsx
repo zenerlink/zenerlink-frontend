@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Bell,
   Calculator,
@@ -19,151 +19,272 @@ import { AppShell, type ZenerPage } from './components/layout/AppShell';
 import { AppLogo } from './components/ui/AppLogo';
 import { Button } from './components/ui/Button';
 import { Card } from './components/ui/Card';
-import { historySeed, metersSeed, notificationsSeed, recipientsSeed } from './data/mockData';
-import { formatCurrency, generateToken } from './lib/format';
-import type { HistoryItem, MeterRecord, PaymentMethod, PendingToken, RecentRecipient } from './types';
+import { ApiError, EMBEDDED, api, koboToNaira, nairaToKobo, setSignedOutHandler } from './lib/api';
+import type { ApiMeter, Branding, Consumption, Notification, PendingToken as ApiPendingToken, User } from './lib/api';
+import { BrandContext, fallbackBranding, useBrand } from './lib/brand';
+import { applyBranding } from './lib/theme';
+import { formatCurrency } from './lib/format';
+import type { HistoryItem, MeterRecord, NotificationItem, PaymentMethod, PendingToken, RecentRecipient } from './types';
 
-type Session = { email: string; phone: string };
 type ModalName = 'fund' | 'buy' | 'share' | 'addMeter' | 'calculator' | 'notifications' | null;
+type Result<T> = { ok: true; value: T } | { ok: false; message: string };
+
+const DEFAULT_RATE = 200;
+
+const errorMessage = (e: unknown) => (e instanceof ApiError ? e.message : 'Network error. Check your connection and try again.');
+
+const toMeterRecord = (m: ApiMeter): MeterRecord => ({
+  id: m.id,
+  label: m.label,
+  providerCode: m.provider_code,
+  providerName: m.provider_name,
+  meterNumber: m.meter_number,
+  customerName: m.customer_name,
+  address: m.address,
+  meterType: m.meter_type,
+  kwhReserve: m.kwh_reserve,
+});
+
+const placeholderMeter: MeterRecord = {
+  id: '',
+  label: 'No meter',
+  providerCode: '',
+  providerName: 'Add a meter to get started',
+  meterNumber: '',
+  customerName: '',
+  address: '',
+  meterType: 'prepaid',
+  kwhReserve: 0,
+};
+
+const relativeTime = (iso: string) => {
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return 'Now';
+  if (mins < 60) return `${mins} min${mins === 1 ? '' : 's'} ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs} hr${hrs === 1 ? '' : 's'} ago`;
+  const days = Math.round(hrs / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
+};
+
+const gold = 'rgb(var(--zener-gold))';
+const success = 'rgb(var(--zener-success))';
 
 export default function App() {
-  const [session, setSession] = useState<Session | null>(null);
+  const [branding, setBranding] = useState<Branding>(fallbackBranding);
+  const [user, setUser] = useState<User | null>(null);
+  const [booting, setBooting] = useState(true);
+
+  useEffect(() => {
+    setSignedOutHandler(() => setUser(null));
+    const boot = async () => {
+      try {
+        const b = await api.branding();
+        setBranding(b);
+        applyBranding(b);
+      } catch {
+        /* keep default branding if the API is unreachable */
+      }
+      try {
+        const code = new URLSearchParams(window.location.hash.slice(1)).get('code');
+        if (EMBEDDED && code) {
+          window.history.replaceState(null, '', window.location.pathname + window.location.search);
+          setUser((await api.exchangeEmbedCode(code)).user);
+        } else {
+          const me = await api.resume();
+          if (me) setUser(me.user);
+        }
+      } catch {
+        /* not signed in */
+      } finally {
+        setBooting(false);
+      }
+    };
+    void boot();
+  }, []);
+
+  return (
+    <BrandContext.Provider value={branding}>
+      {booting ? (
+        <main className="grid min-h-screen place-items-center"><AppLogo size={44} /></main>
+      ) : user ? (
+        <Workspace user={user} onLogout={() => void api.logout().then(() => setUser(null))} />
+      ) : EMBEDDED ? (
+        <main className="grid min-h-screen place-items-center px-6 text-center text-sm text-white/55">
+          Your session has ended. Return to {branding.display_name} and open electricity again.
+        </main>
+      ) : (
+        <AuthScreen onAuthenticated={setUser} />
+      )}
+    </BrandContext.Provider>
+  );
+}
+
+function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
   const [activePage, setActivePage] = useState<ZenerPage>('home');
   const [modal, setModal] = useState<ModalName>(null);
-  const [walletBalance, setWalletBalance] = useState(25_000);
-  const [meters, setMeters] = useState<MeterRecord[]>(metersSeed);
-  const [selectedMeterId, setSelectedMeterId] = useState(metersSeed[0].id);
-  const [history, setHistory] = useState<HistoryItem[]>(historySeed);
-  const [recentRecipients, setRecentRecipients] = useState<RecentRecipient[]>(recipientsSeed);
-  const [pendingTokens, setPendingTokens] = useState<Record<string, PendingToken>>({});
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [apiMeters, setApiMeters] = useState<ApiMeter[]>([]);
+  const [selectedMeterId, setSelectedMeterId] = useState('');
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [recentRecipients, setRecentRecipients] = useState<RecentRecipient[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [apiTokens, setApiTokens] = useState<ApiPendingToken[]>([]);
+  const [rates, setRates] = useState<Record<string, number>>({});
   const [suggestedToken, setSuggestedToken] = useState<string | null>(null);
   const [quickShareRecipient, setQuickShareRecipient] = useState<RecentRecipient | null>(null);
+  const [loadError, setLoadError] = useState('');
 
+  const meters = useMemo(() => apiMeters.map(toMeterRecord), [apiMeters]);
   const selectedMeter = useMemo(
-    () => meters.find((meter) => meter.id === selectedMeterId) ?? meters[0],
+    () => meters.find((meter) => meter.id === selectedMeterId) ?? meters[0] ?? placeholderMeter,
     [meters, selectedMeterId],
   );
+  const ratePerKwh = rates[selectedMeter.providerCode] ?? DEFAULT_RATE;
 
-  const addHistory = (item: HistoryItem) => setHistory((items) => [item, ...items]);
-
-  const updateMeter = (meterId: string, updater: (meter: MeterRecord) => MeterRecord) => {
-    setMeters((items) => items.map((meter) => (meter.id === meterId ? updater(meter) : meter)));
-  };
-
-  const fundWallet = (amount: number) => {
-    if (!Number.isFinite(amount) || amount <= 0) return false;
-    setWalletBalance((value) => value + amount);
-    addHistory({
-      title: 'Wallet funded',
-      subtitle: 'Zenerlink MFB transfer',
-      amount: `+${formatCurrency(amount)}`,
-      accent: '#0DF020',
-    });
-    setModal(null);
-    return true;
-  };
-
-  const buyElectricity = (amount: number, paymentMethod: PaymentMethod) => {
-    if (!Number.isFinite(amount) || amount <= 0) return null;
-    if (paymentMethod === 'wallet' && amount > walletBalance) return null;
-    if (paymentMethod === 'wallet') setWalletBalance((value) => value - amount);
-    const token = generateToken();
-    const kwhAmount = amount / 200;
-    setPendingTokens((tokens) => ({
-      ...tokens,
-      [token]: { meterNumber: selectedMeter.meterNumber, kwhAmount, source: 'purchase' },
-    }));
-    setSuggestedToken(token);
-    addHistory({
-      title: 'Electricity purchase',
-      subtitle: `${selectedMeter.providerCode} ${selectedMeter.meterType} meter`,
-      amount: `-${formatCurrency(amount)}`,
-      accent: '#C8823A',
-    });
-    setActivePage('diu');
-    setModal(null);
-    return token;
-  };
-
-  const redeemToken = (token: string) => {
-    const credit = pendingTokens[token];
-    if (!credit || credit.meterNumber !== selectedMeter.meterNumber) return false;
-    updateMeter(selectedMeter.id, (meter) => ({ ...meter, kwhReserve: meter.kwhReserve + credit.kwhAmount }));
-    setPendingTokens(({ [token]: _removed, ...rest }) => rest);
-    if (suggestedToken === token) setSuggestedToken(null);
-    addHistory({
-      title: credit.source === 'share' ? 'Spark Share token redeemed' : 'DIU credit delivered',
-      subtitle: credit.note ? `${selectedMeter.label} meter • ${credit.note}` : `${selectedMeter.label} meter`,
-      amount: `+${credit.kwhAmount.toFixed(1)} kWh`,
-      accent: '#0DF020',
-    });
-    return true;
-  };
-
-  const shareUnits = (meterNumber: string, amount: number, note: string) => {
-    if (!meterNumber.trim() || !Number.isFinite(amount) || amount <= 0 || amount > selectedMeter.kwhReserve) return false;
-    updateMeter(selectedMeter.id, (meter) => ({ ...meter, kwhReserve: meter.kwhReserve - amount }));
-    setMeters((items) =>
-      items.map((meter) =>
-        meter.meterNumber === meterNumber ? { ...meter, kwhReserve: meter.kwhReserve + amount } : meter,
-      ),
+  // DIU page expects tokens keyed by token string with the meter number.
+  const pendingTokens = useMemo(() => {
+    const byId = new Map(apiMeters.map((m) => [m.id, m.meter_number]));
+    return Object.fromEntries(
+      apiTokens.map((t): [string, PendingToken] => [
+        t.token,
+        { meterNumber: byId.get(t.meter_id) ?? '', kwhAmount: t.energy_kwh, source: t.source, note: t.note || undefined },
+      ]),
     );
-    addHistory({
-      title: 'Units shared',
-      subtitle: `${meterNumber} • ${note || 'No note'}`,
-      amount: `-${amount.toFixed(1)} kWh`,
-      accent: '#ffffff',
-    });
-    const name = meters.find((meter) => meter.meterNumber === meterNumber)?.label ?? (note || 'Recipient');
-    setRecentRecipients((items) => [
-      { name, meterNumber, lastNote: note || 'Direct transfer', lastAmount: amount, lastShared: 'Now' },
-      ...items.filter((item) => item.meterNumber !== meterNumber),
-    ].slice(0, 5));
-    setModal(null);
-    setQuickShareRecipient(null);
-    return true;
+  }, [apiTokens, apiMeters]);
+
+  const refresh = useCallback(async () => {
+    try {
+      const [w, m, a, r, n, t, tr] = await Promise.all([
+        api.wallet(),
+        api.meters(),
+        api.activity(),
+        api.recipients(),
+        api.notifications(),
+        api.pendingTokens(),
+        api.tariffs(),
+      ]);
+      setWalletBalance(koboToNaira(w.balance_kobo));
+      setApiMeters(m.meters);
+      setHistory(
+        a.activity.map((item) => ({
+          title: item.title,
+          subtitle: item.subtitle,
+          amount:
+            item.amount_kobo !== undefined && item.amount_kobo !== null
+              ? `${item.amount_kobo >= 0 ? '+' : '-'}${formatCurrency(Math.abs(koboToNaira(item.amount_kobo)))}`
+              : item.kwh !== undefined && item.kwh !== null
+                ? `${item.kwh >= 0 ? '+' : ''}${item.kwh.toFixed(1)} kWh`
+                : '',
+          accent: (item.amount_kobo ?? item.kwh ?? 0) >= 0 ? success : gold,
+        })),
+      );
+      setRecentRecipients(
+        r.recipients.map((x) => ({
+          name: x.name,
+          meterNumber: x.meter_number,
+          lastNote: x.last_note,
+          lastAmount: x.last_kwh,
+          lastShared: x.last_shared_at ? relativeTime(x.last_shared_at) : 'Saved',
+        })),
+      );
+      setNotifications(
+        n.notifications.map((x: Notification) => ({ title: x.title, message: x.message, critical: x.critical, time: relativeTime(x.created_at) })),
+      );
+      setApiTokens(t.tokens);
+      setRates(Object.fromEntries(tr.tariffs.map((x) => [x.provider_code, x.rate_per_kwh])));
+      setLoadError('');
+    } catch (e) {
+      setLoadError(errorMessage(e));
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const fundWallet = async (amount: number): Promise<Result<string>> => {
+    if (!Number.isFinite(amount) || amount <= 0) return { ok: false, message: 'Enter a valid funding amount.' };
+    try {
+      const res = await api.fundWallet(nairaToKobo(amount), 'bank_transfer');
+      if (res.payment?.checkout_url) {
+        window.location.assign(res.payment.checkout_url);
+        return { ok: true, value: 'Redirecting to payment…' };
+      }
+      await refresh();
+      setModal(null);
+      return { ok: true, value: res.sandbox ? 'Sandbox funding applied (no real money moved).' : 'Wallet funded.' };
+    } catch (e) {
+      return { ok: false, message: errorMessage(e) };
+    }
   };
 
-  const generateShareToken = (meterNumber: string, amount: number, note: string, recipientName: string) => {
-    if (!meterNumber.trim() || !Number.isFinite(amount) || amount <= 0 || amount > selectedMeter.kwhReserve) return null;
-    const token = generateToken();
-    updateMeter(selectedMeter.id, (meter) => ({ ...meter, kwhReserve: meter.kwhReserve - amount }));
-    setPendingTokens((tokens) => ({
-      ...tokens,
-      [token]: { meterNumber, kwhAmount: amount, source: 'share', note },
-    }));
-    addHistory({
-      title: 'Spark Share token generated',
-      subtitle: `${meterNumber} • ${note || recipientName || 'Recipient'}`,
-      amount: `-${amount.toFixed(1)} kWh`,
-      accent: '#C8823A',
-    });
-    setRecentRecipients((items) => [
-      {
-        name: recipientName || note || 'Recipient',
-        meterNumber,
-        lastNote: note || 'Token transfer',
-        lastAmount: amount,
-        lastShared: 'Now',
-      },
-      ...items.filter((item) => item.meterNumber !== meterNumber),
-    ].slice(0, 5));
-    setSuggestedToken(token);
-    return token;
+  const buyElectricity = async (amount: number, paymentMethod: PaymentMethod): Promise<Result<string>> => {
+    if (!selectedMeter.id) return { ok: false, message: 'Add a meter first.' };
+    if (!Number.isFinite(amount) || amount <= 0) return { ok: false, message: 'Enter a valid purchase amount.' };
+    const method = paymentMethod === 'bankTransfer' ? 'bank_transfer' : paymentMethod;
+    try {
+      const p = await api.purchase(selectedMeter.id, nairaToKobo(amount), method);
+      if (p.status === 'payment_pending' && p.payment?.checkout_url) {
+        window.location.assign(p.payment.checkout_url);
+        return { ok: true, value: 'Redirecting to payment…' };
+      }
+      await refresh();
+      if (p.token) {
+        setSuggestedToken(p.token);
+        setActivePage('diu');
+        setModal(null);
+        return { ok: true, value: p.token };
+      }
+      if (p.status === 'refunded') return { ok: false, message: `Purchase failed and was refunded: ${p.failure_reason ?? ''}` };
+      return { ok: false, message: 'Purchase is being confirmed. Your token will appear under DIU shortly.' };
+    } catch (e) {
+      return { ok: false, message: errorMessage(e) };
+    }
   };
 
-  const addMeter = (meter: MeterRecord) => {
-    if (!meter.meterNumber.trim() || !meter.label.trim() || !meter.providerCode.trim()) return false;
-    setMeters((items) => [...items, meter]);
-    setSelectedMeterId(meter.id);
-    addHistory({
-      title: 'Meter added',
-      subtitle: `${meter.label} • ${meter.meterNumber}`,
-      amount: meter.providerCode,
-      accent: '#0DF020',
-    });
-    setModal(null);
-    return true;
+  const redeemToken = async (token: string): Promise<Result<string>> => {
+    if (!selectedMeter.id) return { ok: false, message: 'Add a meter first.' };
+    try {
+      const res = await api.redeem(selectedMeter.id, token);
+      if (suggestedToken === token) setSuggestedToken(null);
+      await refresh();
+      return { ok: true, value: res.message || 'Token delivered successfully.' };
+    } catch (e) {
+      return { ok: false, message: errorMessage(e) };
+    }
+  };
+
+  const share = async (meterNumber: string, amount: number, note: string, recipientName: string, mode: 'direct' | 'token'): Promise<Result<string>> => {
+    if (!meterNumber.trim() || !Number.isFinite(amount) || amount <= 0) return { ok: false, message: 'Check recipient meter and amount.' };
+    try {
+      const res = await api.share({ from_meter_id: selectedMeter.id, to_meter_number: meterNumber, kwh: amount, note, recipient_name: recipientName, mode });
+      await refresh();
+      if (mode === 'token' && res.token) {
+        setSuggestedToken(res.token);
+        return { ok: true, value: res.token };
+      }
+      setModal(null);
+      setQuickShareRecipient(null);
+      return { ok: true, value: 'Units shared.' };
+    } catch (e) {
+      return { ok: false, message: errorMessage(e) };
+    }
+  };
+
+  const addMeter = async (input: { label: string; providerCode: string; meterNumber: string }): Promise<Result<string>> => {
+    if (!input.meterNumber.trim() || !input.label.trim() || !input.providerCode.trim()) {
+      return { ok: false, message: 'Enter a label, provider code, and meter number.' };
+    }
+    try {
+      const m = await api.linkMeter({ label: input.label, provider_code: input.providerCode, meter_number: input.meterNumber });
+      await refresh();
+      setSelectedMeterId(m.id);
+      setModal(null);
+      return { ok: true, value: 'Meter added.' };
+    } catch (e) {
+      return { ok: false, message: errorMessage(e) };
+    }
   };
 
   const openShareModal = (recipient?: RecentRecipient) => {
@@ -171,33 +292,34 @@ export default function App() {
     setModal('share');
   };
 
-  if (!session) {
-    return <AuthScreen onAuthenticated={setSession} />;
-  }
+  const clientName = user.name || user.email.split('@')[0];
 
   return (
     <AppShell
       activePage={activePage}
       onPageChange={setActivePage}
-      onLogout={() => setSession(null)}
-      clientEmail={session.email}
-      clientName="Myke Daniels"
+      onLogout={onLogout}
+      clientEmail={user.email}
+      clientName={clientName}
       walletBalance={walletBalance}
       selectedMeter={selectedMeter}
       metersCount={meters.length}
     >
+      {loadError ? (
+        <p className="mb-4 rounded-md border border-zener-danger/40 bg-zener-danger/10 px-3 py-2 text-sm font-bold text-zener-danger">{loadError}</p>
+      ) : null}
       {activePage === 'home' ? (
         <HomePage
           meters={meters}
           selectedMeter={selectedMeter}
           walletBalance={walletBalance}
           recentRecipients={recentRecipients}
+          notifications={notifications}
+          ratePerKwh={ratePerKwh}
           onSelectMeter={setSelectedMeterId}
           onOpenModal={setModal}
           onQuickShare={openShareModal}
-          onRemoveRecipient={(recipient) =>
-            setRecentRecipients((items) => items.filter((item) => item.meterNumber !== recipient.meterNumber))
-          }
+          onRemoveRecipient={(recipient) => void api.removeRecipient(recipient.meterNumber).then(refresh)}
         />
       ) : null}
       {activePage === 'consumption' ? <ConsumptionPage selectedMeter={selectedMeter} /> : null}
@@ -211,7 +333,7 @@ export default function App() {
       ) : null}
       {activePage === 'exchange' ? <ExchangePage /> : null}
       {activePage === 'profile' ? (
-        <ProfilePage email={session.email} phone={session.phone} meters={meters} history={history} />
+        <ProfilePage name={clientName} email={user.email} phone={user.phone} meters={meters} history={history} />
       ) : null}
 
       <ActionModals
@@ -220,31 +342,54 @@ export default function App() {
         ownMeters={meters.filter((meter) => meter.id !== selectedMeter.id)}
         quickRecipient={quickShareRecipient}
         walletBalance={walletBalance}
-        notifications={notificationsSeed}
+        notifications={notifications}
+        ratePerKwh={ratePerKwh}
         onClose={() => {
           setModal(null);
           setQuickShareRecipient(null);
         }}
         onFundWallet={fundWallet}
         onBuyElectricity={buyElectricity}
-        onShareUnits={shareUnits}
-        onGenerateShareToken={generateShareToken}
+        onShare={share}
         onAddMeter={addMeter}
       />
     </AppShell>
   );
 }
 
-function AuthScreen({ onAuthenticated }: { onAuthenticated: (session: Session) => void }) {
+function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: User) => void }) {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const brand = useBrandName();
+
+  const submit = async () => {
+    setError('');
+    if (!isLogin && password !== confirm) {
+      setError('Passwords do not match.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const session = isLogin ? await api.login(email, password) : await api.register(email, phone, name, password);
+      onAuthenticated(session.user);
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <main className="grid min-h-screen place-items-center px-4 py-10">
       <Card className="w-full max-w-md border-transparent bg-transparent p-6 shadow-none sm:p-8">
         <AppLogo size={44} />
-        <h1 className="mt-6 text-3xl font-black tracking-[0.24em]">ZENERLINK</h1>
+        <h1 className="mt-6 text-3xl font-black tracking-[0.24em]">{brand.toUpperCase()}</h1>
         <p className="mt-3 text-sm leading-6 text-white/55">Fast electricity management for every meter you own.</p>
         <div className="mt-8 grid grid-cols-2 gap-2">
           {['Login', 'Sign Up'].map((label) => {
@@ -252,7 +397,10 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (session: Session) =
             return (
               <button
                 key={label}
-                onClick={() => setIsLogin(label === 'Login')}
+                onClick={() => {
+                  setIsLogin(label === 'Login');
+                  setError('');
+                }}
                 className={`rounded-md py-3 text-sm font-bold ${selected ? 'bg-zener-gold text-black' : 'bg-white/10 text-white'}`}
               >
                 {label}
@@ -261,20 +409,23 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (session: Session) =
           })}
         </div>
         <div className="mt-5 space-y-3">
+          {!isLogin ? <FormInput label="Full name" value={name} onChange={setName} placeholder="Ada Obi" /> : null}
           {!isLogin ? <FormInput label="Phone" value={phone} onChange={setPhone} placeholder="+234 801 234 5678" /> : null}
-          <FormInput label="Email" value={email} onChange={setEmail} placeholder="myke@zenerlink.app" />
-          <FormInput label="Password" value="" onChange={() => undefined} placeholder="••••••••" type="password" />
-          {!isLogin ? <FormInput label="Confirm password" value="" onChange={() => undefined} placeholder="••••••••" type="password" /> : null}
+          <FormInput label="Email" value={email} onChange={setEmail} placeholder="you@example.com" type="email" />
+          <FormInput label="Password" value={password} onChange={setPassword} placeholder="••••••••" type="password" />
+          {!isLogin ? <FormInput label="Confirm password" value={confirm} onChange={setConfirm} placeholder="••••••••" type="password" /> : null}
         </div>
-        <Button
-          className="mt-6 w-full"
-          onClick={() => onAuthenticated({ email: email || 'myke@zenerlink.app', phone: phone || '+234 801 234 5678' })}
-        >
-          {isLogin ? 'Login' : 'Sign Up'}
+        {error ? <p className="mt-4 text-sm font-bold text-zener-danger">{error}</p> : null}
+        <Button className="mt-6 w-full" disabled={busy} onClick={() => void submit()}>
+          {busy ? 'Please wait…' : isLogin ? 'Login' : 'Sign Up'}
         </Button>
       </Card>
     </main>
   );
+}
+
+function useBrandName() {
+  return useBrand().display_name;
 }
 
 function HomePage({
@@ -282,6 +433,8 @@ function HomePage({
   selectedMeter,
   walletBalance,
   recentRecipients,
+  notifications,
+  ratePerKwh,
   onSelectMeter,
   onOpenModal,
   onQuickShare,
@@ -291,6 +444,8 @@ function HomePage({
   selectedMeter: MeterRecord;
   walletBalance: number;
   recentRecipients: RecentRecipient[];
+  notifications: NotificationItem[];
+  ratePerKwh: number;
   onSelectMeter: (id: string) => void;
   onOpenModal: (modal: ModalName) => void;
   onQuickShare: (recipient: RecentRecipient) => void;
@@ -351,8 +506,8 @@ function HomePage({
             <div className="flex items-start gap-3">
               <Bell className="mt-1 text-zener-gold" size={18} />
               <div>
-                <p className="font-bold">{notificationsSeed[0].title}</p>
-                <p className="mt-1 text-sm leading-6 text-white/55">{notificationsSeed[0].message}</p>
+                <p className="font-bold">{notifications[0]?.title ?? 'All caught up'}</p>
+                <p className="mt-1 text-sm leading-6 text-white/55">{notifications[0]?.message ?? 'No new notifications.'}</p>
                 <Button variant="ghost" className="mt-3 px-0" onClick={() => onOpenModal('notifications')}>View notifications</Button>
               </div>
             </div>
@@ -386,20 +541,20 @@ function HomePage({
             ))}
           </div>
         </Card>
-        <MiniHistory selectedMeter={selectedMeter} />
+        <MiniHistory selectedMeter={selectedMeter} ratePerKwh={ratePerKwh} />
       </div>
     </div>
   );
 }
 
-function MiniHistory({ selectedMeter }: { selectedMeter: MeterRecord }) {
+function MiniHistory({ selectedMeter, ratePerKwh }: { selectedMeter: MeterRecord; ratePerKwh: number }) {
   return (
     <Card className="p-5">
       <h3 className="font-black">Today’s power view</h3>
       <div className="mt-5 grid gap-3 sm:grid-cols-3">
         {[
           ['Reserve', `${selectedMeter.kwhReserve.toFixed(1)} kWh`, Gauge],
-          ['Rate', 'NGN 200/kWh', CreditCard],
+          ['Rate', `${formatCurrency(ratePerKwh)}/kWh`, CreditCard],
           ['Protection', 'Ohm Shield active', ShieldCheck],
         ].map(([label, value, Icon]) => (
           <div key={label as string} className="rounded-lg border border-zener-border bg-white/[0.025] p-4">
@@ -414,34 +569,51 @@ function MiniHistory({ selectedMeter }: { selectedMeter: MeterRecord }) {
 }
 
 function ConsumptionPage({ selectedMeter }: { selectedMeter: MeterRecord }) {
-  const daily = [38, 46, 42, 58, 63, 51, 67];
+  const [data, setData] = useState<Consumption | null>(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!selectedMeter.id) return;
+    setData(null);
+    api.consumption(selectedMeter.id).then(setData).catch((e) => setError(errorMessage(e)));
+  }, [selectedMeter.id]);
+
+  const days = data?.days ?? [];
+  const peak = Math.max(1, ...days.map((d) => d.kwh));
+  const breakdown = Object.entries(data?.time_breakdown ?? {});
   return (
     <div className="grid gap-5 pb-20 lg:grid-cols-[1fr_360px] lg:pb-0">
       <Card className="p-5">
         <p className="text-xs font-bold uppercase tracking-[0.22em] text-zener-gold">Consumption</p>
         <h2 className="mt-1 text-2xl font-black">{selectedMeter.label} energy trend</h2>
-        <div className="mt-8 flex h-72 items-end gap-3 rounded-lg border border-zener-border bg-black/25 p-4">
-          {daily.map((value, index) => (
-            <div key={index} className="flex flex-1 flex-col items-center gap-3">
-              <div className="w-full rounded-t-md bg-gradient-to-t from-zener-gold to-[#f2b56e]" style={{ height: `${value}%` }} />
-              <span className="text-xs text-white/40">{['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][index]}</span>
-            </div>
-          ))}
-        </div>
+        {days.length ? (
+          <div className="mt-8 flex h-72 items-end gap-3 rounded-lg border border-zener-border bg-black/25 p-4">
+            {days.map((day) => (
+              <div key={day.date} className="flex h-full flex-1 flex-col items-center justify-end gap-3">
+                <div className="w-full rounded-t-md bg-gradient-to-t from-zener-gold to-zener-gold/60" style={{ height: `${(day.kwh / peak) * 100}%` }} />
+                <span className="text-xs text-white/40">{new Date(day.date).toLocaleDateString('en-NG', { weekday: 'short' })}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-8 rounded-lg border border-zener-border bg-black/25 p-6 text-sm text-white/55">
+            {error || (data ? data.message ?? 'No consumption data yet.' : selectedMeter.id ? 'Loading…' : 'Add a meter to see consumption.')}
+          </p>
+        )}
       </Card>
       <Card className="p-5">
         <h3 className="font-black">Time breakdown</h3>
         <div className="mt-5 space-y-4">
-          {[
-            ['Peak hours', 42],
-            ['Day usage', 33],
-            ['Night usage', 25],
-          ].map(([label, value]) => (
-            <div key={label as string}>
-              <div className="mb-2 flex justify-between text-sm"><span>{label as string}</span><span>{value as number}%</span></div>
-              <div className="h-2 rounded-md bg-white/10"><div className="h-2 rounded-md bg-zener-gold" style={{ width: `${value}%` }} /></div>
-            </div>
-          ))}
+          {breakdown.length ? (
+            breakdown.map(([label, share]) => (
+              <div key={label}>
+                <div className="mb-2 flex justify-between text-sm capitalize"><span>{label}</span><span>{Math.round(share * 100)}%</span></div>
+                <div className="h-2 rounded-md bg-white/10"><div className="h-2 rounded-md bg-zener-gold" style={{ width: `${share * 100}%` }} /></div>
+              </div>
+            ))
+          ) : (
+            <p className="text-sm text-white/45">Available once the meter reports readings.</p>
+          )}
         </div>
       </Card>
     </div>
@@ -457,10 +629,11 @@ function DiuPage({
   selectedMeter: MeterRecord;
   suggestedToken: string | null;
   pendingTokens: Record<string, PendingToken>;
-  onRedeem: (token: string) => boolean;
+  onRedeem: (token: string) => Promise<Result<string>>;
 }) {
   const [token, setToken] = useState(suggestedToken ?? '');
   const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
   const matchingTokens = Object.entries(pendingTokens).filter(
     ([, credit]) => credit.meterNumber === selectedMeter.meterNumber,
   );
@@ -469,10 +642,12 @@ function DiuPage({
     if (suggestedToken) setToken(suggestedToken);
   }, [suggestedToken]);
 
-  const handleRedeem = (value: string) => {
-    const ok = onRedeem(value.trim());
-    setMessage(ok ? 'Token delivered successfully.' : 'Token is invalid for this meter.');
-    if (ok) setToken('');
+  const handleRedeem = async (value: string) => {
+    setBusy(true);
+    const res = await onRedeem(value.trim());
+    setBusy(false);
+    setMessage(res.ok ? res.value : res.message);
+    if (res.ok) setToken('');
   };
 
   return (
@@ -487,14 +662,15 @@ function DiuPage({
         </button>
       ) : null}
       <div className="mt-5">
-        <FormInput label="Token" value={token} onChange={setToken} placeholder="1234-5678-9012-3456" />
+        <FormInput label="Token" value={token} onChange={setToken} placeholder="20-digit token" />
       </div>
       <Button
         className="mt-5 w-full"
         icon={Zap}
-        onClick={() => handleRedeem(token)}
+        disabled={busy}
+        onClick={() => void handleRedeem(token)}
       >
-        Send to DIU
+        {busy ? 'Sending…' : 'Send to DIU'}
       </Button>
       {message ? <p className="mt-4 text-sm font-bold text-zener-success">{message}</p> : null}
       <div className="mt-6 rounded-lg border border-zener-border bg-black/20 p-4">
@@ -542,14 +718,14 @@ function ExchangePage() {
   );
 }
 
-function ProfilePage({ email, phone, meters, history }: { email: string; phone: string; meters: MeterRecord[]; history: HistoryItem[] }) {
+function ProfilePage({ name, email, phone, meters, history }: { name: string; email: string; phone: string; meters: MeterRecord[]; history: HistoryItem[] }) {
   return (
     <div className="grid gap-5 lg:grid-cols-[360px_1fr]">
       <Card className="p-5" accent>
         <div className="flex items-center gap-4">
-          <div className="grid h-16 w-16 place-items-center rounded-lg border border-zener-gold/40 bg-zener-gold/10 text-2xl font-black">M</div>
+          <div className="grid h-16 w-16 place-items-center rounded-lg border border-zener-gold/40 bg-zener-gold/10 text-2xl font-black">{name.charAt(0).toUpperCase()}</div>
           <div>
-            <h2 className="text-2xl font-black">Myke Daniels</h2>
+            <h2 className="text-2xl font-black">{name}</h2>
             <p className="text-sm text-white/55">{email}</p>
             <p className="text-sm text-white/40">{phone}</p>
           </div>
@@ -562,6 +738,7 @@ function ProfilePage({ email, phone, meters, history }: { email: string; phone: 
       <Card className="p-5">
         <h3 className="font-black">History</h3>
         <div className="mt-4 divide-y divide-zener-border">
+          {history.length === 0 ? <p className="py-4 text-sm text-white/45">No activity yet.</p> : null}
           {history.map((item, index) => (
             <div key={`${item.title}-${index}`} className="flex items-center justify-between py-4">
               <div>
@@ -584,11 +761,11 @@ function ActionModals({
   quickRecipient,
   walletBalance,
   notifications,
+  ratePerKwh,
   onClose,
   onFundWallet,
   onBuyElectricity,
-  onShareUnits,
-  onGenerateShareToken,
+  onShare,
   onAddMeter,
 }: {
   modal: ModalName;
@@ -596,13 +773,13 @@ function ActionModals({
   ownMeters: MeterRecord[];
   quickRecipient: RecentRecipient | null;
   walletBalance: number;
-  notifications: typeof notificationsSeed;
+  notifications: NotificationItem[];
+  ratePerKwh: number;
   onClose: () => void;
-  onFundWallet: (amount: number) => boolean;
-  onBuyElectricity: (amount: number, paymentMethod: PaymentMethod) => string | null;
-  onShareUnits: (meterNumber: string, amount: number, note: string) => boolean;
-  onGenerateShareToken: (meterNumber: string, amount: number, note: string, recipientName: string) => string | null;
-  onAddMeter: (meter: MeterRecord) => boolean;
+  onFundWallet: (amount: number) => Promise<Result<string>>;
+  onBuyElectricity: (amount: number, paymentMethod: PaymentMethod) => Promise<Result<string>>;
+  onShare: (meterNumber: string, amount: number, note: string, recipientName: string, mode: 'direct' | 'token') => Promise<Result<string>>;
+  onAddMeter: (input: { label: string; providerCode: string; meterNumber: string }) => Promise<Result<string>>;
 }) {
   const [amount, setAmount] = useState('5000');
   const [method, setMethod] = useState<PaymentMethod>('wallet');
@@ -614,6 +791,16 @@ function ActionModals({
   const [message, setMessage] = useState('');
   const [providerCode, setProviderCode] = useState('AEDC');
   const [label, setLabel] = useState('New meter');
+  const [busy, setBusy] = useState(false);
+
+  const run = async (fn: () => Promise<Result<string>>, onOk?: (value: string) => void) => {
+    setBusy(true);
+    setMessage('');
+    const res = await fn();
+    setBusy(false);
+    if (!res.ok) setMessage(res.message);
+    else onOk?.(res.value);
+  };
 
   useEffect(() => {
     setMessage('');
@@ -657,10 +844,8 @@ function ActionModals({
             amount={amount}
             setAmount={setAmount}
             submitLabel="Confirm transfer"
-            onSubmit={() => {
-              const ok = onFundWallet(parsedAmount);
-              if (!ok) setMessage('Enter a valid funding amount.');
-            }}
+            busy={busy}
+            onSubmit={() => void run(() => onFundWallet(parsedAmount), setMessage)}
           />
         ) : null}
 
@@ -668,7 +853,7 @@ function ActionModals({
           <div className="space-y-4">
             <p className="text-sm text-white/55">Buying for {selectedMeter.providerName}. Wallet balance: {formatCurrency(walletBalance)}</p>
             <div className="grid gap-2 sm:grid-cols-2">
-              {(['wallet', 'bankTransfer', 'card', 'crypto'] as PaymentMethod[]).map((item) => (
+              {(['wallet', 'bankTransfer', 'card'] as PaymentMethod[]).map((item) => (
                 <button
                   key={item}
                   onClick={() => setMethod(item)}
@@ -682,12 +867,8 @@ function ActionModals({
               amount={amount}
               setAmount={setAmount}
               submitLabel="Generate token"
-              onSubmit={() => {
-                const token = onBuyElectricity(parsedAmount, method);
-                if (!token) {
-                  setMessage(method === 'wallet' ? 'Wallet balance is too low or amount is invalid.' : 'Enter a valid purchase amount.');
-                }
-              }}
+              busy={busy}
+              onSubmit={() => void run(() => onBuyElectricity(parsedAmount, method))}
             />
           </div>
         ) : null}
@@ -740,20 +921,18 @@ function ActionModals({
             <Button
               className="w-full"
               icon={shareMode === 'direct' ? Send : Copy}
-              onClick={() => {
-                if (shareMode === 'direct') {
-                  const ok = onShareUnits(meterNumber.trim(), parsedAmount, note.trim());
-                  if (!ok) setMessage('Check recipient meter, amount, and available reserve.');
-                  return;
-                }
-                const token = onGenerateShareToken(meterNumber.trim(), parsedAmount, note.trim(), recipientName.trim());
-                if (!token) {
-                  setMessage('Check recipient meter, amount, and available reserve.');
-                  return;
-                }
-                setGeneratedToken(token);
-                setMessage('Spark Share token generated. Send it to the recipient for DIU redemption.');
-              }}
+              disabled={busy}
+              onClick={() =>
+                void run(
+                  () => onShare(meterNumber.trim(), parsedAmount, note.trim(), recipientName.trim(), shareMode),
+                  (value) => {
+                    if (shareMode === 'token') {
+                      setGeneratedToken(value);
+                      setMessage('Spark Share token generated. Send it to the recipient for DIU redemption.');
+                    }
+                  },
+                )
+              }
             >
               {shareMode === 'direct' ? 'Share units' : 'Generate share token'}
             </Button>
@@ -777,20 +956,8 @@ function ActionModals({
             <Button
               className="w-full"
               icon={Plus}
-              onClick={() => {
-                const ok = onAddMeter({
-                  id: crypto.randomUUID(),
-                  label,
-                  providerCode,
-                  providerName: `${providerCode} Electricity`,
-                  meterNumber,
-                  customerName: 'Myke Daniels',
-                  address: 'New service address',
-                  meterType: 'prepaid',
-                  kwhReserve: 0,
-                });
-                if (!ok) setMessage('Enter a label, provider code, and meter number.');
-              }}
+              disabled={busy}
+              onClick={() => void run(() => onAddMeter({ label, providerCode: providerCode.toUpperCase(), meterNumber: meterNumber.trim() }))}
             >
               Add meter
             </Button>
@@ -798,7 +965,7 @@ function ActionModals({
         ) : null}
 
         {modal === 'calculator' ? (
-          <ElectricityCalculator />
+          <ElectricityCalculator ratePerKwh={ratePerKwh} />
         ) : null}
 
         {modal === 'notifications' ? (
@@ -818,8 +985,7 @@ function ActionModals({
   );
 }
 
-function ElectricityCalculator() {
-  const ratePerKwh = 200;
+function ElectricityCalculator({ ratePerKwh }: { ratePerKwh: number }) {
   const [input, setInput] = useState('0');
   const [editingKwh, setEditingKwh] = useState(true);
 
@@ -891,7 +1057,7 @@ function ElectricityCalculator() {
                   onClick={() => onKeyTap(key)}
                   className={`aspect-square rounded-full text-xl font-bold transition ${
                     key === 'C'
-                      ? 'bg-zener-gold text-black hover:bg-[#d9964f]'
+                      ? 'bg-zener-gold text-black hover:brightness-110'
                       : 'bg-white/[0.06] text-white hover:bg-white/[0.1]'
                   }`}
                 >
@@ -932,11 +1098,11 @@ function CalculatorResultTile({
   );
 }
 
-function AmountForm({ amount, setAmount, submitLabel, onSubmit }: { amount: string; setAmount: (value: string) => void; submitLabel: string; onSubmit: () => void }) {
+function AmountForm({ amount, setAmount, submitLabel, onSubmit, busy = false }: { amount: string; setAmount: (value: string) => void; submitLabel: string; onSubmit: () => void; busy?: boolean }) {
   return (
     <div className="space-y-4">
-      <FormInput label="Amount" value={amount} onChange={setAmount} placeholder="5000" type="number" />
-      <Button className="w-full" icon={CheckCircle2} onClick={onSubmit}>{submitLabel}</Button>
+      <FormInput label="Amount (₦)" value={amount} onChange={setAmount} placeholder="5000" type="number" />
+      <Button className="w-full" icon={CheckCircle2} disabled={busy} onClick={onSubmit}>{busy ? 'Processing…' : submitLabel}</Button>
     </div>
   );
 }

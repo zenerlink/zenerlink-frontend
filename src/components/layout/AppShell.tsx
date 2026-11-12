@@ -5,6 +5,7 @@ import { Button } from '../ui/Button';
 import { StatusDot } from '../ui/StatusDot';
 import { formatCurrency } from '../../lib/format';
 import type { MeterRecord } from '../../types';
+import { useBrand } from '../../lib/brand';
 
 export type ZenerPage = 'home' | 'consumption' | 'diu' | 'exchange' | 'profile';
 
@@ -39,6 +40,8 @@ export function AppShell({
   metersCount,
   children,
 }: AppShellProps) {
+  const brand = useBrand();
+  const brandName = brand.display_name.toUpperCase();
   const initials = clientName
     .split(' ')
     .map((name) => name[0])
@@ -52,7 +55,7 @@ export function AppShell({
         <div className="mb-8 flex items-center gap-3 px-2">
           <AppLogo size={28} />
           <div>
-            <p className="text-sm font-black tracking-[0.28em]">ZENERLINK</p>
+            <p className="text-sm font-black tracking-[0.28em]">{brandName}</p>
             <p className="text-xs text-white/42">Electricity OS</p>
           </div>
         </div>
@@ -89,13 +92,18 @@ export function AppShell({
         <header className="sticky top-0 z-20 flex items-center justify-between border-b border-zener-border bg-black/70 px-4 py-3 backdrop-blur lg:px-8">
           <div className="flex items-center gap-3 lg:hidden">
             <AppLogo size={24} />
-            <span className="text-xs font-black tracking-[0.24em]">ZENERLINK</span>
+            <span className="text-xs font-black tracking-[0.24em]">{brandName}</span>
           </div>
           <div className="hidden lg:block">
             <p className="text-xs font-bold uppercase tracking-[0.22em] text-white/35">Client workspace</p>
             <h1 className="text-xl font-black">Hello {clientName.split(' ')[0]}</h1>
           </div>
           <div className="flex items-center gap-2">
+            {brand.sandbox ? (
+              <span className="rounded-full border border-yellow-400/40 bg-yellow-400/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] text-yellow-300">
+                Sandbox
+              </span>
+            ) : null}
             <StatusDot status="lightOn" />
             <Button variant="ghost" icon={LogOut} onClick={onLogout} className="hidden sm:inline-flex">
               Logout
@@ -124,7 +132,7 @@ export function AppShell({
                 <div className="grid gap-3 sm:grid-cols-3">
                   <HeaderMetric icon={Wallet} label="Available" value={formatCurrency(walletBalance)} />
                   <HeaderMetric icon={Activity} label="Reserve" value={`${selectedMeter.kwhReserve.toFixed(1)} kWh`} />
-                  <HeaderMetric icon={LayoutGrid} label="Meters" value={`${metersCount} active`} />
+                  <HeaderMetric icon={LayoutGrid} label="Meters" value={`${metersCount} linked`} />
                 </div>
                 <button className="hidden h-10 w-10 shrink-0 place-items-center rounded-md border border-zener-border text-white/55 transition hover:border-zener-gold/50 hover:text-zener-gold xl:grid" aria-label="Account menu">
                   <ChevronDown size={18} />

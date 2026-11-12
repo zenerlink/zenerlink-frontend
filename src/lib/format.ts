@@ -4,6 +4,3 @@ export const formatCurrency = (value: number) =>
     currency: 'NGN',
     maximumFractionDigits: 2,
   }).format(value);
-
-export const generateToken = () =>
-  Array.from({ length: 4 }, () => Math.floor(1000 + Math.random() * 9000)).join('-');

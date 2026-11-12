@@ -7,7 +7,7 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 
 export function Button({ variant = 'primary', icon: Icon, className = '', children, ...props }: ButtonProps) {
   const styles = {
-    primary: 'bg-zener-gold text-black hover:bg-[#d9964f]',
+    primary: 'bg-zener-gold text-black hover:brightness-110 disabled:opacity-50',
     secondary: 'border border-zener-border bg-white/[0.03] text-white hover:border-zener-gold/50',
     ghost: 'text-white/65 hover:bg-white/[0.04] hover:text-white',
   };

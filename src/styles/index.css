@@ -11,7 +11,18 @@
 
 :root {
   color-scheme: dark;
-  background: #050505;
+  /* Zenerlink defaults; overridden per tenant by src/lib/theme.ts */
+  --zener-gold: 200 130 58;
+  --zener-secondary: 34 34 34;
+  --zener-black: 5 5 5;
+  --zener-surface: 17 17 17;
+  --zener-panel: 23 17 10;
+  --zener-border: 34 34 34;
+  --zener-success: 13 240 32;
+  --zener-danger: 255 90 90;
+  --zener-text: 255 255 255;
+  --zener-muted: 140 140 140;
+  background: rgb(var(--zener-black));
 }
 
 body {
@@ -19,9 +30,9 @@ body {
   min-width: 320px;
   min-height: 100vh;
   background:
-    radial-gradient(circle at top right, rgba(200, 130, 58, 0.13), transparent 30rem),
-    linear-gradient(135deg, #050505 0%, #080604 42%, #050505 100%);
-  color: #fff;
+    radial-gradient(circle at top right, rgb(var(--zener-gold) / 0.13), transparent 30rem),
+    linear-gradient(135deg, rgb(var(--zener-black)) 0%, rgb(var(--zener-panel) / 0.4) 42%, rgb(var(--zener-black)) 100%);
+  color: rgb(var(--zener-text));
 }
 
 button,
