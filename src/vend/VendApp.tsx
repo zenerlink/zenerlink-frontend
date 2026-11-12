@@ -65,14 +65,14 @@ function Shell({ children }: { children: React.ReactNode }) {
   const brand = useBrand();
   return (
     <div className="min-h-screen">
-      <header className="mx-auto flex max-w-5xl items-center justify-between px-4 py-5">
-        <a href="/" className="flex items-center gap-3">
+      <header className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-5">
+        <a href="/" className="flex min-w-0 items-center gap-3">
           <AppLogo size={26} />
           <span className="text-sm font-black tracking-[0.28em]">{brand.display_name.toUpperCase()}</span>
         </a>
         {brand.sandbox ? (
-          <span className="rounded-full border border-yellow-400/40 bg-yellow-400/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-yellow-300">
-            Test mode · tokens are not real
+          <span className="shrink-0 rounded-full border border-yellow-400/40 bg-yellow-400/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-yellow-300">
+            Test mode<span className="hidden sm:inline"> · tokens are not real</span>
           </span>
         ) : null}
       </header>
@@ -164,8 +164,8 @@ function BuyPage() {
   };
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
-      <Card className="p-5 sm:p-7" accent>
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+      <Card className="min-w-0 p-5 sm:p-7" accent>
         <p className="text-xs font-bold uppercase tracking-[0.22em] text-zener-gold">Buy electricity</p>
         <h1 className="mt-1 text-2xl font-black sm:text-3xl">Recharge any prepaid meter in seconds</h1>
         <p className="mt-2 text-sm text-white/55">No account needed. Your token appears here and you can load it straight away.</p>
@@ -340,7 +340,11 @@ function OrderPage({ id, orderKey }: { id: string; orderKey: string }) {
       {done && order.token ? (
         <div className="mt-6 rounded-lg border border-zener-gold/40 bg-zener-panel p-5 text-center">
           <p className="text-xs uppercase tracking-[0.18em] text-white/40">Your token</p>
-          <p className="mt-2 break-all text-2xl font-black tracking-[0.12em] text-zener-gold sm:text-3xl">{formatToken(order.token)}</p>
+          <p className="mt-2 flex flex-wrap justify-center gap-x-3 gap-y-1 text-2xl font-black tracking-[0.08em] text-zener-gold sm:text-3xl">
+            {formatToken(order.token).split(' ').map((group, i) => (
+              <span key={i} className="whitespace-nowrap">{group}</span>
+            ))}
+          </p>
           <Button
             variant="secondary"
             icon={Copy}
