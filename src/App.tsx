@@ -370,6 +370,10 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: User) => void
 
   const submit = async () => {
     setError('');
+    if (!isLogin && password.length < 8) {
+      setError('Password must be at least 8 characters.');
+      return;
+    }
     if (!isLogin && password !== confirm) {
       setError('Passwords do not match.');
       return;
