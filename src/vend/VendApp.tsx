@@ -96,6 +96,7 @@ function BuyPage() {
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [paying, setPaying] = useState(false);
+  const [offline, setOffline] = useState(false);
   const idemKey = useRef(crypto.randomUUID());
   const recent = useMemo(loadRecent, []);
 
@@ -106,7 +107,11 @@ function BuyPage() {
         setDiscos(r.discos);
         setProvider((p) => p || r.discos.find((d) => d.provider_code === 'IKEDC')?.provider_code || r.discos[0]?.provider_code || '');
       })
-      .catch((e) => setError(message(e)));
+      .catch((e) => {
+        // Production API not reachable yet (pre-launch) or down: say so plainly.
+        if (!(e instanceof ApiError)) setOffline(true);
+        else setError(message(e));
+      });
   }, []);
 
   // A changed form is a new purchase: new idempotency key, re-verify the meter.
@@ -162,6 +167,21 @@ function BuyPage() {
       setPaying(false);
     }
   };
+
+  if (offline) {
+    return (
+      <Card className="mx-auto max-w-xl p-8 text-center" accent>
+        <Zap className="mx-auto text-zener-gold" size={28} />
+        <h1 className="mt-4 text-2xl font-black">Electricity purchases are launching soon</h1>
+        <p className="mt-3 text-sm leading-6 text-white/55">
+          We are finishing the final checks with our payment and DisCo partners. Please check back shortly.
+        </p>
+        <Button variant="secondary" className="mt-6" onClick={() => window.location.reload()}>
+          Try again
+        </Button>
+      </Card>
+    );
+  }
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
