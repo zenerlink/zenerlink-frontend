@@ -3,7 +3,9 @@
 // Tokens live in memory; the refresh token is kept in localStorage so a
 // reload stays signed in. Embedded (partner SSO) sessions never persist.
 
-const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? 'http://localhost:8080';
+// Defaults to the hosted pilot API; set VITE_API_URL (e.g. http://localhost:8080) for local backends.
+const API_URL =
+  (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || 'https://zieon-api.198.199.65.142.sslip.io';
 
 const params = new URLSearchParams(window.location.search);
 export const TENANT = params.get('tenant') ?? (import.meta.env.VITE_TENANT as string | undefined) ?? 'zenerlink';
