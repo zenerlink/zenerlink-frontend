@@ -235,3 +235,15 @@ export const guest = {
 
 export const koboToNaira = (k: number) => k / 100;
 export const nairaToKobo = (n: number) => Math.round(n * 100);
+
+// ---- Account orders (buy page for signed-in customers) ----
+export const account = {
+  order: (input: { provider_code: string; meter_number: string; meter_type: string; amount_kobo: number; payment_method?: 'checkout' | 'wallet' }, idempotencyKey: string) =>
+    request<GuestOrder>('POST', '/v1/orders', input, { 'Idempotency-Key': idempotencyKey }),
+  orders: (limit = 20) => request<{ orders: GuestOrder[] }>('GET', `/v1/orders?limit=${limit}`),
+  get: (id: string) => request<GuestOrder>('GET', `/v1/orders/${encodeURIComponent(id)}`),
+  updateProfile: (input: { name?: string; phone?: string }) => request<User>('PATCH', '/v1/me', input),
+  changePassword: (current_password: string, new_password: string) =>
+    request<void>('POST', '/v1/me/password', { current_password, new_password }),
+  removeMeter: (id: string) => request<void>('DELETE', `/v1/meters/${encodeURIComponent(id)}`),
+};
