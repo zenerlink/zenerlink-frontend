@@ -50,6 +50,17 @@ export type Branding = {
 
 export type User = { id: string; email: string; phone: string; name: string; role: string };
 
+export type WalletEntry = {
+  id: number;
+  kind: 'wallet_fund' | 'purchase' | 'refund' | string;
+  amount_kobo: number;
+  balance_after_kobo: number;
+  memo: string;
+  order_id?: string;
+  created_at: string;
+};
+export type WalletActivity = { entries: WalletEntry[]; months: { month: string; in_kobo: number; out_kobo: number }[] };
+
 export type ApiMeter = {
   id: string;
   label: string;
@@ -187,6 +198,7 @@ export const api = {
       { amount_kobo, method, ...(callback_url ? { callback_url } : {}) },
       idem(),
     ),
+  walletActivity: (limit = 30) => request<WalletActivity>('GET', `/v1/wallet/activity?limit=${limit}`),
   meters: () => request<{ meters: ApiMeter[] }>('GET', '/v1/meters'),
   validateMeter: (provider_code: string, meter_number: string) =>
     request<{ verified: boolean; customer_name: string; address: string; message: string }>('POST', '/v1/meters/validate', { provider_code, meter_number }),

@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
+  ArrowDownLeft,
   ArrowDownToLine,
+  ArrowUpRight,
   Check,
   ChevronDown,
   Copy,
@@ -18,6 +20,7 @@ import {
   Share2,
   X,
   Receipt,
+  RotateCcw,
   Search,
   Trash2,
   UserRound,
@@ -27,7 +30,7 @@ import { brandedQr, brandedQrUrl } from './qr';
 import { discoLogo } from '../assets/discos';
 import logo from '../assets/logo-icon-white.svg';
 import { ApiError, IS_PRODUCTION, account, api, guest, koboToNaira, nairaToKobo, setSignedOutHandler } from '../lib/api';
-import type { ApiMeter, Branding, Disco, GuestOrder, PublicMeter, User } from '../lib/api';
+import type { ApiMeter, Branding, Disco, GuestOrder, PublicMeter, User, WalletActivity, WalletEntry } from '../lib/api';
 import { BrandContext, fallbackBranding, useBrand } from '../lib/brand';
 import { applyBranding } from '../lib/theme';
 import { formatCurrency } from '../lib/format';
@@ -1068,7 +1071,275 @@ function MeterQrDialog({ meter, onClose }: { meter: ApiMeter; onClose: () => voi
 // ---------------------------------------------------------------------------
 
 function WalletPage({ funded }: { funded: boolean }) {
-  const { walletKobo, refreshWallet, nav } = useAcct();
+  const { user, walletKobo, refreshWallet, nav } = useAcct();
+  const [activity, setActivity] = useState<WalletActivity | null>(null);
+  const [meters, setMeters] = useState<ApiMeter[]>([]);
+  const [error, setError] = useState('');
+  const fundRef = useRef<HTMLInputElement>(null);
+
+  const load = useCallback(() => {
+    api.walletActivity(30).then(setActivity).catch((e) => setError(message(e)));
+  }, []);
+  useEffect(() => {
+    load();
+    api
+      .meters()
+      .then((r) => setMeters(r.meters.filter((m) => m.provider_code !== 'ZIEON')))
+      .catch(() => undefined);
+  }, [load]);
+  // Coming back from checkout: the webhook may land a moment later.
+  useEffect(() => {
+    if (!funded) return;
+    const ts = [2000, 6000, 15000].map((d) =>
+      window.setTimeout(() => {
+        refreshWallet();
+        load();
+      }, d),
+    );
+    return () => ts.forEach((t) => window.clearTimeout(t));
+  }, [funded, refreshWallet, load]);
+
+  const months = activity?.months ?? [];
+  const now = months[months.length - 1];
+  const prev = months[months.length - 2];
+  const fund = () => {
+    fundRef.current?.focus();
+    fundRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
+  return (
+    <>
+      <PageTitle title="Wallet" sub="Keep a balance and buy electricity in one tap." />
+      {error ? <ErrorBox text={error} /> : null}
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="min-w-0 space-y-6">
+          <section className={`${card} p-6`}>
+            <p className="text-sm font-semibold text-white/50">Wallet balance</p>
+            <p className="mt-2 text-4xl font-black tracking-tight sm:text-5xl">{walletKobo === null ? '—' : naira(walletKobo)}</p>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              <MonthTile label="Added this month" kobo={now?.in_kobo} prevKobo={prev?.in_kobo} dir="in" />
+              <MonthTile label="Spent this month" kobo={now?.out_kobo} prevKobo={prev?.out_kobo} dir="out" />
+            </div>
+          </section>
+
+          <section className={`${card} p-6`}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-base font-bold">Last 6 months</h2>
+              <span className="flex items-center gap-4 text-xs text-white/50">
+                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-zener-gold" /> Added</span>
+                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-white/30" /> Spent</span>
+              </span>
+            </div>
+            {activity === null ? <Spinner /> : <MonthChart months={months} />}
+          </section>
+
+          <section className={`${card} overflow-hidden`}>
+            <div className="flex items-center justify-between gap-3 px-6 pt-6">
+              <h2 className="text-base font-bold">Wallet activity</h2>
+              <button type="button" onClick={() => nav('/transactions')} className="text-xs font-semibold text-white/45 hover:text-white">
+                All purchases
+              </button>
+            </div>
+            {activity === null ? (
+              <Spinner />
+            ) : activity.entries.length === 0 ? (
+              <p className="px-6 pb-8 pt-4 text-sm text-white/45">No wallet activity yet. Fund your wallet to pay for electricity in one tap.</p>
+            ) : (
+              <WalletEntries entries={activity.entries} nav={nav} />
+            )}
+          </section>
+        </div>
+
+        <div className="order-first min-w-0 space-y-6 xl:order-none">
+          <section className={`${card} p-5`}>
+            <WalletCard name={user.name || user.email} kobo={walletKobo} />
+            <div className="mt-5 grid grid-cols-4 gap-2">
+              <QuickAction label="Fund" onClick={fund} icon={<Plus size={19} />} />
+              <QuickAction label="Buy" onClick={() => nav('/?pay=wallet')} icon={<ZMark size={18} />} />
+              <QuickAction label="Meters" onClick={() => nav('/meters')} icon={<Gauge size={19} />} />
+              <QuickAction label="History" onClick={() => nav('/transactions')} icon={<Receipt size={19} />} />
+            </div>
+          </section>
+
+          <FundWallet inputRef={fundRef} funded={funded} onFunded={() => { refreshWallet(); load(); }} />
+
+          {meters.length ? (
+            <section className={`${card} p-5`}>
+              <h2 className="text-base font-bold">Pay from wallet</h2>
+              <ul className="mt-3 divide-y divide-white/[0.06]">
+                {meters.slice(0, 4).map((m) => (
+                  <li key={m.id} className="flex items-center gap-3 py-3">
+                    <DiscoLogo disco={{ provider_code: m.provider_code, logo_url: '' } as Disco} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold">{m.label || m.customer_name || m.meter_number}</span>
+                      <span className="block truncate font-mono text-xs text-white/40">{m.meter_number}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => nav(`/?meter_id=${m.id}&pay=wallet`)}
+                      className="h-8 rounded-lg border border-white/[0.1] px-3 text-xs font-bold hover:border-zener-gold/50 hover:text-zener-gold"
+                    >
+                      Buy
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function MonthTile({ label, kobo, prevKobo, dir }: { label: string; kobo?: number; prevKobo?: number; dir: 'in' | 'out' }) {
+  const change = kobo !== undefined && prevKobo ? Math.round(((kobo - prevKobo) / prevKobo) * 100) : null;
+  return (
+    <div className="flex items-center gap-4 rounded-xl border border-white/[0.06] bg-black/40 p-4">
+      <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${dir === 'in' ? 'bg-zener-gold/[0.12] text-zener-gold' : 'bg-white/[0.06] text-white/70'}`}>
+        {dir === 'in' ? <ArrowDownLeft size={18} /> : <ArrowUpRight size={18} />}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-xs font-semibold text-white/45">{label}</span>
+        <span className="mt-0.5 block text-xl font-black tracking-tight">{kobo === undefined ? '—' : naira(kobo)}</span>
+        {change !== null ? (
+          <span className="block text-[11px] text-white/35">
+            {change >= 0 ? '+' : ''}
+            {change}% vs last month
+          </span>
+        ) : null}
+      </span>
+    </div>
+  );
+}
+
+const compactNaira = (kobo: number) => {
+  const n = kobo / 100;
+  if (n >= 1_000_000) return `₦${+(n / 1_000_000).toFixed(1)}m`;
+  if (n >= 1000) return `₦${+(n / 1000).toFixed(1)}k`;
+  return `₦${Math.round(n)}`;
+};
+
+function MonthChart({ months }: { months: WalletActivity['months'] }) {
+  const max = Math.max(...months.flatMap((m) => [m.in_kobo, m.out_kobo]), 0);
+  // Round the scale up to a tidy number so the gridlines read well.
+  const step = max > 0 ? 10 ** Math.floor(Math.log10(max)) : 100000;
+  const top = max > 0 ? Math.ceil(max / step) * step : 1000000;
+  const pct = (k: number) => `${Math.max((k / top) * 100, k > 0 ? 2 : 0)}%`;
+  const label = (m: string) => new Date(`${m}-01T12:00:00`).toLocaleString('en-NG', { month: 'short' });
+  return (
+    <div className="mt-6 flex gap-3">
+      <div className="flex h-44 flex-col justify-between pb-0 text-right text-[10px] text-white/30">
+        <span>{compactNaira(top)}</span>
+        <span>{compactNaira(top / 2)}</span>
+        <span>₦0</span>
+      </div>
+      <div className="flex-1">
+        <div className="relative h-44">
+          {[0, 50, 100].map((y) => (
+            <span key={y} className="absolute inset-x-0 border-t border-dashed border-white/[0.07]" style={{ top: `${y}%` }} />
+          ))}
+          <div className="relative flex h-full items-end justify-around gap-2">
+            {months.map((m) => (
+              <div key={m.month} className="flex h-full flex-1 items-end justify-center gap-1" title={`${label(m.month)}: added ${naira(m.in_kobo)}, spent ${naira(m.out_kobo)}`}>
+                <span className="w-full max-w-[22px] rounded-t-md bg-zener-gold transition-[height] duration-700" style={{ height: pct(m.in_kobo) }} />
+                <span className="w-full max-w-[22px] rounded-t-md bg-white/25 transition-[height] duration-700" style={{ height: pct(m.out_kobo) }} />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="mt-2 flex justify-around gap-2">
+          {months.map((m, i) => (
+            <span key={m.month} className={`flex-1 text-center text-[11px] ${i === months.length - 1 ? 'font-bold text-white' : 'text-white/40'}`}>
+              {label(m.month)}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const ENTRY_LABEL: Record<string, string> = { wallet_fund: 'Wallet top-up', purchase: 'Electricity purchase', refund: 'Refund' };
+
+function WalletEntries({ entries, nav }: { entries: WalletEntry[]; nav: Nav }) {
+  const title = (e: WalletEntry) => ENTRY_LABEL[e.kind] ?? (e.memo || e.kind);
+  const detail = (e: WalletEntry) => (e.kind === 'purchase' ? e.memo.replace(/^Electricity purchase\s*/, 'Meter ') : e.kind === 'refund' ? e.memo.replace(/^Refund:\s*/, '') : '');
+  const open = (e: WalletEntry) => (e.order_id ? () => nav(`/order/${e.order_id}`) : undefined);
+  const amount = (e: WalletEntry) => (
+    <span className={`font-semibold tabular-nums ${e.amount_kobo > 0 ? 'text-zener-success' : ''}`}>
+      {e.amount_kobo > 0 ? '+' : '−'}
+      {naira(Math.abs(e.amount_kobo))}
+    </span>
+  );
+  const icon = (e: WalletEntry) => (
+    <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${e.amount_kobo > 0 ? 'bg-zener-success/10 text-zener-success' : 'bg-white/[0.06] text-white/60'}`}>
+      {e.kind === 'purchase' ? <ZMark size={15} /> : e.kind === 'refund' ? <RotateCcw size={15} /> : <ArrowDownLeft size={16} />}
+    </span>
+  );
+  return (
+    <ul className="mt-3 divide-y divide-white/[0.05]">
+      {entries.map((e) => (
+        <li key={e.id}>
+          <button
+            type="button"
+            onClick={open(e)}
+            disabled={!e.order_id}
+            className="flex w-full items-center gap-3 px-5 py-3.5 text-left enabled:hover:bg-white/[0.02] sm:px-6"
+          >
+            {icon(e)}
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-semibold">{title(e)}</span>
+              <span className="block truncate text-xs text-white/40">
+                {detail(e) ? `${detail(e)} · ` : ''}
+                {shortDate(e.created_at)}
+              </span>
+            </span>
+            <span className="shrink-0 text-right text-sm">
+              {amount(e)}
+              <span className="block text-[11px] tabular-nums text-white/35">Bal {naira(e.balance_after_kobo)}</span>
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function WalletCard({ name, kobo }: { name: string; kobo: number | null }) {
+  const brand = useBrand();
+  return (
+    <div className="relative aspect-[1.6] overflow-hidden rounded-2xl border border-zener-gold/25 bg-[linear-gradient(135deg,rgb(var(--zener-gold)/0.22),rgb(var(--zener-gold)/0.04)_60%)] p-5">
+      <span className="pointer-events-none absolute -bottom-8 -right-6 text-zener-gold/[0.10]">
+        <ZMark size={170} />
+      </span>
+      <div className="relative flex h-full flex-col justify-between">
+        <div className="flex items-center justify-between">
+          <span className="text-[12px] font-black tracking-[0.3em]">{brand.display_name.toUpperCase()}</span>
+          <span className="text-[11px] font-semibold text-white/50">Wallet</span>
+        </div>
+        <p className="text-[28px] font-black tracking-tight">{kobo === null ? '—' : naira(kobo)}</p>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-white/40">Account</p>
+          <p className="truncate text-sm font-semibold">{name}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QuickAction({ label, icon, onClick }: { label: string; icon: React.ReactNode; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className="group flex flex-col items-center gap-2">
+      <span className="grid h-12 w-12 place-items-center rounded-xl border border-white/[0.07] bg-white/[0.04] text-white/80 transition group-hover:border-zener-gold/40 group-hover:text-zener-gold">
+        {icon}
+      </span>
+      <span className="text-xs font-semibold text-white/60 group-hover:text-white">{label}</span>
+    </button>
+  );
+}
+
+function FundWallet({ inputRef, funded, onFunded }: { inputRef: React.RefObject<HTMLInputElement>; funded: boolean; onFunded: () => void }) {
   const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -1080,12 +1351,6 @@ function WalletPage({ funded }: { funded: boolean }) {
   useEffect(() => {
     idemKey.current = crypto.randomUUID();
   }, [amount]);
-  // Coming back from checkout: the webhook may land a moment later.
-  useEffect(() => {
-    if (!funded) return;
-    const ts = [2000, 6000, 15000].map((d) => window.setTimeout(refreshWallet, d));
-    return () => ts.forEach((t) => window.clearTimeout(t));
-  }, [funded, refreshWallet]);
 
   const fund = async () => {
     setError('');
@@ -1099,7 +1364,7 @@ function WalletPage({ funded }: { funded: boolean }) {
         window.location.assign(r.payment.checkout_url);
         return;
       }
-      refreshWallet();
+      onFunded();
       setAmount('');
       setNote(`${formatCurrency(value)} added to your wallet.`);
     } catch (e) {
@@ -1110,60 +1375,47 @@ function WalletPage({ funded }: { funded: boolean }) {
   };
 
   return (
-    <>
-      <PageTitle title="Wallet" sub="Keep a balance and buy electricity in one tap." />
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="relative overflow-hidden rounded-2xl border border-zener-gold/25 bg-gradient-to-br from-zener-gold/[0.16] to-zener-gold/[0.03] p-7">
-          <p className="text-xs font-semibold text-white/55">Available balance</p>
-          <p className="mt-2 text-4xl font-black tracking-tight">{walletKobo === null ? '—' : naira(walletKobo)}</p>
-          <button type="button" onClick={() => nav('/?pay=wallet')} className="mt-6 h-10 rounded-lg bg-white/[0.1] px-4 text-sm font-bold hover:bg-white/[0.16]">
-            Buy electricity
-          </button>
-          <Wallet size={96} strokeWidth={1.25} className="pointer-events-none absolute bottom-5 right-5 text-zener-gold/[0.12]" />
-        </div>
-        <div className={`${card} space-y-5 p-6`}>
-          <h2 className="text-base font-bold">Fund wallet</h2>
-          <Field label="Amount">
-            <div className="relative">
-              <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-lg font-semibold text-white/40">₦</span>
-              <input
-                inputMode="decimal"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))}
-                placeholder="0"
-                className={`${inputCls} pl-9 text-lg font-semibold`}
-              />
-            </div>
-            <div className="mt-2.5 grid grid-cols-4 gap-2">
-              {QUICK.map((q) => (
-                <button
-                  key={q}
-                  type="button"
-                  onClick={() => setAmount(String(q))}
-                  className={`rounded-lg border py-2 text-xs font-semibold transition ${
-                    value === q ? 'border-zener-gold/60 bg-zener-gold/10 text-zener-gold' : 'border-white/[0.08] text-white/55 hover:border-white/20 hover:text-white'
-                  }`}
-                >
-                  ₦{q.toLocaleString('en-NG')}
-                </button>
-              ))}
-            </div>
-          </Field>
-          {error ? <ErrorBox text={error} /> : null}
-          {note ? <p className="rounded-lg bg-zener-success/10 px-3.5 py-2.5 text-sm text-zener-success">{note}</p> : null}
-          <button
-            type="button"
-            disabled={busy || !ok}
-            onClick={() => void fund()}
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-zener-gold text-sm font-bold text-black hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {busy && <Loader2 size={17} className="animate-spin" />}
-            {value > 0 ? `Fund ${formatCurrency(value)}` : 'Fund wallet'}
-          </button>
-          <p className="flex items-center justify-center gap-1.5 text-xs text-white/35"><Lock size={12} /> Card, transfer or USSD, processed securely</p>
-        </div>
+    <section className={`${card} space-y-4 p-5`}>
+      <h2 className="text-base font-bold">Fund wallet</h2>
+      <div className="relative">
+        <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-lg font-semibold text-white/40">₦</span>
+        <input
+          ref={inputRef}
+          inputMode="decimal"
+          aria-label="Amount"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))}
+          placeholder="0"
+          className={`${inputCls} pl-9 text-lg font-semibold`}
+        />
       </div>
-    </>
+      <div className="grid grid-cols-4 gap-2">
+        {QUICK.map((q) => (
+          <button
+            key={q}
+            type="button"
+            onClick={() => setAmount(String(q))}
+            className={`rounded-lg border py-2 text-xs font-semibold transition ${
+              value === q ? 'border-zener-gold/60 bg-zener-gold/10 text-zener-gold' : 'border-white/[0.08] text-white/55 hover:border-white/20 hover:text-white'
+            }`}
+          >
+            ₦{q.toLocaleString('en-NG')}
+          </button>
+        ))}
+      </div>
+      {error ? <ErrorBox text={error} /> : null}
+      {note ? <p className="rounded-lg bg-zener-success/10 px-3.5 py-2.5 text-sm text-zener-success">{note}</p> : null}
+      <button
+        type="button"
+        disabled={busy || !ok}
+        onClick={() => void fund()}
+        className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-zener-gold text-sm font-bold text-black hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        {busy && <Loader2 size={17} className="animate-spin" />}
+        {value > 0 ? `Fund ${formatCurrency(value)}` : 'Fund wallet'}
+      </button>
+      <p className="flex items-center justify-center gap-1.5 text-xs text-white/35"><Lock size={12} /> Card, transfer or USSD, processed securely</p>
+    </section>
   );
 }
 
