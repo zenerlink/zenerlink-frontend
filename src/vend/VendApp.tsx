@@ -496,8 +496,13 @@ function BuyPage({ meterId, prefill, payWallet }: { meterId: string | null; pref
   const minNaira = disco ? koboToNaira(disco.min_purchase_kobo) : 500;
   const maxNaira = disco ? koboToNaira(disco.max_purchase_kobo) : 500000;
   const fee = disco ? koboToNaira(disco.service_fee_kobo) : 0;
+  // Convenience fee by payment method, added on top of the electricity amount.
+  const feeFor = (m: 'checkout' | 'wallet') => koboToNaira((m === 'wallet' ? disco?.wallet_fee_kobo : disco?.checkout_fee_kobo) ?? 0);
+  const methodFee = feeFor(method);
   const amountOk = Number.isFinite(value) && value >= minNaira && value <= maxNaira;
-  const walletShort = method === 'wallet' && walletKobo !== null && nairaToKobo(value) > walletKobo;
+  const total = amountOk ? value + methodFee : value;
+  const walletShort = method === 'wallet' && walletKobo !== null && amountOk && nairaToKobo(total) > walletKobo;
+  const feeNote = (m: 'checkout' | 'wallet') => (feeFor(m) > 0 ? ` · ₦${feeFor(m).toLocaleString('en-NG')} fee` : feeFor(m === 'wallet' ? 'checkout' : 'wallet') > 0 ? ' · No fee' : '');
   const ready = !!meter?.verified && amountOk && !walletShort;
   const kwh = disco ? estimateKwh(disco, value) : 0;
 
@@ -624,12 +629,12 @@ function BuyPage({ meterId, prefill, payWallet }: { meterId: string | null; pref
 
           <Field label="Pay with">
             <div className="grid gap-2 sm:grid-cols-2">
-              <MethodOption active={method === 'checkout'} onClick={() => setMethod('checkout')} title="Card, transfer or USSD" sub="Secure checkout" />
+              <MethodOption active={method === 'checkout'} onClick={() => setMethod('checkout')} title="Card, transfer or USSD" sub={`Secure checkout${feeNote('checkout')}`} />
               <MethodOption
                 active={method === 'wallet'}
                 onClick={() => setMethod('wallet')}
                 title="Wallet"
-                sub={walletKobo === null ? 'Balance —' : `Balance ${naira(walletKobo)}`}
+                sub={`${walletKobo === null ? 'Balance —' : `Balance ${naira(walletKobo)}`}${feeNote('wallet')}`}
               />
             </div>
             {walletShort ? (
@@ -649,7 +654,7 @@ function BuyPage({ meterId, prefill, payWallet }: { meterId: string | null; pref
             className="flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-zener-gold text-[15px] font-bold text-black transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {paying && <Loader2 size={18} className="animate-spin" />}
-            {paying ? (method === 'wallet' ? 'Buying…' : 'Starting secure payment…') : value > 0 ? `Pay ${formatCurrency(value)}` : 'Pay'}
+            {paying ? (method === 'wallet' ? 'Buying…' : 'Starting secure payment…') : value > 0 ? `Pay ${formatCurrency(total)}` : 'Pay'}
           </button>
           <p className="flex items-center justify-center gap-1.5 text-center text-xs text-white/35">
             <Lock size={12} /> Processed securely. Receipt to {user.email}
@@ -664,9 +669,13 @@ function BuyPage({ meterId, prefill, payWallet }: { meterId: string | null; pref
               <SummaryRow label="Meter" value={meterNumber ? `${meterNumber} · ${meterType}` : undefined} />
               <SummaryRow label="Name" value={meter?.verified ? meter.customer_name : undefined} />
               <div className="border-t border-white/[0.08] pt-3">
-                <SummaryRow label="Amount" value={value > 0 ? formatCurrency(value) : undefined} strong />
+                <SummaryRow label="Electricity" value={value > 0 ? formatCurrency(value) : undefined} />
                 {kwh > 0 ? <SummaryRow label="Estimated energy" value={`≈ ${formatKwh(kwh)}`} /> : null}
                 {fee > 0 ? <p className="mt-1 text-right text-xs text-white/35">includes {formatCurrency(fee)} service charge</p> : null}
+                {methodFee > 0 ? <SummaryRow label={method === 'wallet' ? 'Wallet fee' : 'Convenience fee'} value={formatCurrency(methodFee)} /> : null}
+              </div>
+              <div className="border-t border-white/[0.08] pt-3">
+                <SummaryRow label="Total" value={value > 0 ? formatCurrency(total) : undefined} strong />
               </div>
             </dl>
           </div>
@@ -1688,6 +1697,12 @@ function OrderView({ load, onFinal }: { load: () => Promise<GuestOrder>; onFinal
         <SummaryRow label="Date" value={shortDate(order.created_at)} />
         <SummaryRow label="Reference" value={order.id.slice(0, 8).toUpperCase()} />
         <div className="border-t border-white/[0.08] pt-3">
+          {order.fee_kobo > 0 ? (
+            <>
+              <SummaryRow label="Electricity" value={naira(order.amount_kobo - order.fee_kobo)} />
+              <SummaryRow label="Fee" value={naira(order.fee_kobo)} />
+            </>
+          ) : null}
           <SummaryRow label="Amount paid" value={naira(order.amount_kobo)} strong />
         </div>
       </dl>
