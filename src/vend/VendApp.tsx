@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import logo from '../assets/logo-icon-white.svg';
-import { Wordmark } from '../components/ui/AppLogo';
+import { Wordmark, wordmarkRest } from '../components/ui/AppLogo';
 import { ApiError, IS_PRODUCTION, account, api, guest, koboToNaira, nairaToKobo, setSignedOutHandler } from '../lib/api';
 import type { ApiMeter, Branding, Disco, GuestOrder, PublicMeter, User } from '../lib/api';
 import { BrandContext, fallbackBranding, useBrand } from '../lib/brand';
@@ -179,7 +179,7 @@ function Split({ aside, children }: { aside?: React.ReactNode; children: React.R
       <aside className="relative flex flex-col overflow-hidden border-b border-white/[0.06] px-6 py-6 lg:min-h-screen lg:border-b-0 lg:border-r lg:px-12 lg:py-10">
         <div className="pointer-events-none absolute -left-40 -top-40 h-[28rem] w-[28rem] rounded-full bg-zener-gold/[0.10] blur-3xl" />
         <a href={href('/')} className="relative flex items-center gap-3">
-          <Wordmark fontSize={18} />
+          <Wordmark fontSize={17} />
         </a>
         <div className="relative mt-8 flex-1 lg:mt-16">{aside}</div>
         <SiteFooter className="relative mt-10 hidden lg:flex" />
@@ -382,7 +382,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-[rgb(var(--zener-background))]/90 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
           <a {...link('/')} className="flex items-center gap-3">
-            <Wordmark fontSize={18} />
+            <Wordmark fontSize={17} />
           </a>
           <div className="flex items-center gap-2 sm:gap-3">
             <a
@@ -1019,31 +1019,29 @@ async function drawSticker(m: ApiMeter, link: string, brandName: string, logoUrl
   g.fillStyle = '#d4943a';
   g.fillRect(0, 170, W, 10);
 
-  // Brand mark, centred: the Zenerlink logo alone; other brands add their name.
-  const name = brandName.toUpperCase();
-  const logoOnly = merge && name.startsWith('Z');
+  // Wordmark, centred: the Zenerlink logo is the Z of "ZNRLINK".
+  const rest = merge ? wordmarkRest(brandName) : null;
   let logo: HTMLImageElement | null = null;
   try {
     logo = await loadImage(logoUrl);
   } catch {
     /* sticker still works without the logo */
   }
-  const markH = logoOnly ? 96 : 60;
+  const markH = rest ? 38 : 60;
   const markW = logo ? markH * (logo.width / logo.height || 1) : 0;
   g.font = `900 52px ${font}`;
-  g.textBaseline = 'middle';
-  const text = logoOnly && logo ? '' : name.split('').join(String.fromCharCode(8202, 8202));
-  const gap = text && logo ? 28 : 0;
-  let x = (W - (markW + gap + (text ? g.measureText(text).width : 0))) / 2;
+  g.textBaseline = 'alphabetic';
+  const text = (rest ?? brandName.toUpperCase()).split('').join(String.fromCharCode(8202, 8202));
+  const gap = logo ? (rest ? 16 : 28) : 0;
+  let x = (W - (markW + gap + g.measureText(text).width)) / 2;
   if (logo) {
-    g.drawImage(logo, x, 85 - markH / 2, markW, markH);
+    g.drawImage(logo, x, 106 - markH, markW, markH);
     x += markW + gap;
   }
-  if (text) {
-    g.fillStyle = '#ffffff';
-    g.textAlign = 'left';
-    g.fillText(text, x, 88);
-  }
+  g.fillStyle = '#ffffff';
+  g.textAlign = 'left';
+  g.fillText(text, x, 106);
+  g.textBaseline = 'middle';
 
   g.textAlign = 'center';
   g.fillStyle = '#0b0b0b';
