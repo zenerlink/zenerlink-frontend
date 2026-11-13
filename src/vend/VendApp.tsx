@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, Copy, Loader2, Receipt, ShieldCheck, Zap } from 'lucide-react';
+import { Check, ChevronDown, Copy, Loader2, Lock, Search, Zap } from 'lucide-react';
 import { AppLogo } from '../components/ui/AppLogo';
-import { Button } from '../components/ui/Button';
-import { Card } from '../components/ui/Card';
 import { ApiError, api, guest, koboToNaira, nairaToKobo } from '../lib/api';
 import type { Branding, Disco, GuestOrder, PublicMeter } from '../lib/api';
 import { BrandContext, fallbackBranding, useBrand } from '../lib/brand';
 import { applyBranding } from '../lib/theme';
 import { formatCurrency } from '../lib/format';
 
-// Buy-only product (production zenerlink.com): BuyPower-style guest checkout.
+// Buy-only product (production zenerlink.com): a full-screen guest checkout.
+// Left: brand + live order summary. Right: the form, alone, using full height.
 
 const RECENT_KEY = 'zenerlink.recentOrders';
 type Recent = { id: string; key: string; meter: string; disco: string; amount: number; at: string };
@@ -30,8 +29,10 @@ const saveRecent = (r: Recent) => {
 };
 
 const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Network error. Check your connection and try again.');
-const formatToken = (t: string) => t.replace(/(\d{4})(?=\d)/g, '$1 ');
+const tokenGroups = (t: string) => t.replace(/(\d{4})(?=\d)/g, '$1 ').split(' ');
+const naira = (kobo: number) => formatCurrency(koboToNaira(kobo));
 const QUICK = [1000, 2000, 5000, 10000];
+const keepMode = () => (window.location.search.includes('mode=vend') ? 'mode=vend' : '');
 
 export default function VendRoot() {
   const [branding, setBranding] = useState<Branding>(fallbackBranding);
@@ -44,52 +45,61 @@ export default function VendRoot() {
       })
       .catch(() => undefined);
   }, []);
+  const orderMatch = window.location.pathname.match(/^\/order\/([0-9a-f-]{36})/i);
+  const key = new URLSearchParams(window.location.search).get('key');
   return (
     <BrandContext.Provider value={branding}>
-      <VendApp />
+      {orderMatch && key ? <OrderPage id={orderMatch[1]} orderKey={key} /> : <BuyPage />}
     </BrandContext.Provider>
   );
 }
 
-function VendApp() {
-  const orderMatch = window.location.pathname.match(/^\/order\/([0-9a-f-]{36})/i);
-  const key = new URLSearchParams(window.location.search).get('key');
-  return (
-    <Shell>
-      {orderMatch && key ? <OrderPage id={orderMatch[1]} orderKey={key} /> : <BuyPage />}
-    </Shell>
-  );
-}
+// ---------------------------------------------------------------------------
+// Layout
+// ---------------------------------------------------------------------------
 
-function Shell({ children }: { children: React.ReactNode }) {
+function Split({ aside, children }: { aside: React.ReactNode; children: React.ReactNode }) {
   const brand = useBrand();
   return (
-    <div className="min-h-screen">
-      <header className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-5">
-        <a href="/" className="flex min-w-0 items-center gap-3">
-          <AppLogo size={26} />
-          <span className="text-sm font-black tracking-[0.28em]">{brand.display_name.toUpperCase()}</span>
-        </a>
-        {brand.sandbox ? (
-          <span className="shrink-0 rounded-full border border-yellow-400/40 bg-yellow-400/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-yellow-300">
-            Test mode<span className="hidden sm:inline"> · tokens are not real</span>
-          </span>
-        ) : null}
-      </header>
-      <main className="mx-auto max-w-5xl px-4 pb-16">{children}</main>
-      <footer className="mx-auto max-w-5xl px-4 pb-8 text-xs text-white/35">
-        {brand.support_email ? <>Need help? {brand.support_email}</> : null}
-      </footer>
+    <div className="min-h-screen lg:grid lg:grid-cols-[minmax(380px,5fr)_7fr]">
+      <aside className="relative flex flex-col overflow-hidden border-b border-white/[0.06] px-6 py-6 lg:min-h-screen lg:border-b-0 lg:border-r lg:px-12 lg:py-10">
+        <div className="pointer-events-none absolute -left-40 -top-40 h-[28rem] w-[28rem] rounded-full bg-zener-gold/[0.10] blur-3xl" />
+        <div className="relative flex items-center justify-between gap-3">
+          <a href={'/' + (keepMode() ? `?${keepMode()}` : '')} className="flex items-center gap-3">
+            <AppLogo size={22} />
+            <span className="text-[13px] font-black tracking-[0.3em]">{brand.display_name.toUpperCase()}</span>
+          </a>
+          {brand.sandbox ? (
+            <span className="rounded-full border border-yellow-400/30 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-yellow-300/90">
+              Test mode
+            </span>
+          ) : null}
+        </div>
+        <div className="relative mt-8 flex-1 lg:mt-16">{aside}</div>
+        <footer className="relative mt-10 hidden items-center justify-between text-xs text-white/35 lg:flex">
+          <span>{brand.support_email ? <>Help: {brand.support_email}</> : <>&copy; {new Date().getFullYear()} {brand.display_name}</>}</span>
+          <span className="flex items-center gap-1.5"><Lock size={12} /> Secured payments</span>
+        </footer>
+      </aside>
+      <main className="flex items-start justify-center px-6 py-8 sm:py-12 lg:items-center lg:px-16">
+        <div className="w-full max-w-[460px]">{children}</div>
+      </main>
     </div>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Buy
+// ---------------------------------------------------------------------------
+
 function BuyPage() {
+  const brand = useBrand();
   const [discos, setDiscos] = useState<Disco[]>([]);
   const [provider, setProvider] = useState('');
   const [meterType, setMeterType] = useState<'prepaid' | 'postpaid'>('prepaid');
   const [meterNumber, setMeterNumber] = useState('');
   const [meter, setMeter] = useState<PublicMeter | null>(null);
+  const [verifyError, setVerifyError] = useState('');
   const [verifying, setVerifying] = useState(false);
   const [amount, setAmount] = useState('');
   const [phone, setPhone] = useState('');
@@ -109,46 +119,54 @@ function BuyPage() {
       .catch((e) => setError(message(e)));
   }, []);
 
-  // A changed form is a new purchase: new idempotency key, re-verify the meter.
+  // A changed form is a new purchase (new idempotency key).
   useEffect(() => {
     idemKey.current = crypto.randomUUID();
   }, [provider, meterType, meterNumber, amount, phone, email]);
-  useEffect(() => setMeter(null), [provider, meterType, meterNumber]);
+
+  // Verify automatically once the meter number looks complete.
+  useEffect(() => {
+    setMeter(null);
+    setVerifyError('');
+    if (!provider || meterNumber.length < 11) return;
+    let live = true;
+    const t = window.setTimeout(async () => {
+      setVerifying(true);
+      try {
+        const m = await guest.verify(provider, meterNumber, meterType);
+        if (live) setMeter(m);
+      } catch (e) {
+        if (live) setVerifyError(message(e));
+      } finally {
+        if (live) setVerifying(false);
+      }
+    }, 550);
+    return () => {
+      live = false;
+      window.clearTimeout(t);
+    };
+  }, [provider, meterType, meterNumber]);
 
   const disco = discos.find((d) => d.provider_code === provider);
-  const naira = Number(amount);
+  const value = Number(amount);
   const minNaira = disco ? koboToNaira(disco.min_purchase_kobo) : 500;
   const maxNaira = disco ? koboToNaira(disco.max_purchase_kobo) : 500000;
   const fee = disco ? koboToNaira(disco.service_fee_kobo) : 0;
-
-  const verify = async () => {
-    setError('');
-    if (meterNumber.trim().length < 10) {
-      setError('Enter your full meter number.');
-      return;
-    }
-    setVerifying(true);
-    try {
-      setMeter(await guest.verify(provider, meterNumber.trim(), meterType));
-    } catch (e) {
-      setMeter(null);
-      setError(message(e));
-    } finally {
-      setVerifying(false);
-    }
-  };
+  const amountOk = Number.isFinite(value) && value >= minNaira && value <= maxNaira;
+  const phoneOk = /^\+?\d{10,14}$/.test(phone.replace(/[\s-]/g, ''));
+  const emailOk = /^\S+@\S+\.\S+$/.test(email);
+  const ready = !!meter?.verified && amountOk && phoneOk && emailOk;
 
   const pay = async () => {
     setError('');
-    if (!meter?.verified) return setError('Verify your meter first.');
-    if (!Number.isFinite(naira) || naira < minNaira || naira > maxNaira)
-      return setError(`Enter an amount between ${formatCurrency(minNaira)} and ${formatCurrency(maxNaira)}.`);
-    if (!/^\+?\d{10,14}$/.test(phone.replace(/[\s-]/g, ''))) return setError('Enter a valid phone number.');
-    if (!/^\S+@\S+\.\S+$/.test(email)) return setError('Enter a valid email address.');
+    if (!meter?.verified) return setError('Enter a meter number we can verify.');
+    if (!amountOk) return setError(`Enter an amount between ${formatCurrency(minNaira)} and ${formatCurrency(maxNaira)}.`);
+    if (!phoneOk) return setError('Enter a valid phone number.');
+    if (!emailOk) return setError('Enter a valid email address.');
     setPaying(true);
     try {
       const o = await guest.order(
-        { provider_code: provider, meter_number: meterNumber.trim(), meter_type: meterType, amount_kobo: nairaToKobo(naira), email: email.trim(), phone: phone.trim() },
+        { provider_code: provider, meter_number: meterNumber, meter_type: meterType, amount_kobo: nairaToKobo(value), email: email.trim(), phone: phone.trim() },
         idemKey.current,
       );
       if (o.key) saveRecent({ id: o.id, key: o.key, meter: o.meter_number, disco: o.provider_name, amount: o.amount_kobo, at: o.created_at });
@@ -156,142 +174,160 @@ function BuyPage() {
         window.location.assign(o.checkout_url);
         return;
       }
-      window.location.assign(`/order/${o.id}?key=${encodeURIComponent(o.key ?? '')}${window.location.search.includes('mode=vend') ? '&mode=vend' : ''}`);
+      window.location.assign(`/order/${o.id}?key=${encodeURIComponent(o.key ?? '')}${keepMode() ? '&' + keepMode() : ''}`);
     } catch (e) {
       setError(message(e));
       setPaying(false);
     }
   };
 
+  const summary = (
+    <dl className="space-y-3 text-sm">
+      <SummaryRow label="Electricity company" value={disco?.provider_name} />
+      <SummaryRow label="Meter" value={meterNumber ? `${meterNumber} · ${meterType}` : undefined} />
+      <SummaryRow label="Account name" value={meter?.verified ? meter.customer_name : undefined} />
+      <div className="border-t border-white/[0.08] pt-3">
+        <SummaryRow label="Amount" value={value > 0 ? formatCurrency(value) : undefined} strong />
+        {fee > 0 ? <p className="mt-1 text-right text-xs text-white/35">includes {formatCurrency(fee)} service charge</p> : null}
+      </div>
+    </dl>
+  );
+
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
-      <Card className="min-w-0 p-5 sm:p-7" accent>
-        <p className="text-xs font-bold uppercase tracking-[0.22em] text-zener-gold">Buy electricity</p>
-        <h1 className="mt-1 text-2xl font-black sm:text-3xl">Recharge any prepaid meter in seconds</h1>
-        <p className="mt-2 text-sm text-white/55">No account needed. Your token appears here and you can load it straight away.</p>
-
-        <div className="mt-6 grid gap-4">
-          <Field label="Electricity company">
-            <select
-              value={provider}
-              onChange={(e) => setProvider(e.target.value)}
-              className="w-full rounded-md border border-zener-border bg-zener-surface px-3 py-3 text-sm text-white outline-none focus:border-zener-gold"
-            >
-              {discos.map((d) => (
-                <option key={d.provider_code} value={d.provider_code}>
-                  {d.provider_name} ({d.provider_code})
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <Field label="Meter type">
-            <div className="grid grid-cols-2 gap-2">
-              {(['prepaid', 'postpaid'] as const).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setMeterType(t)}
-                  className={`rounded-md border py-3 text-sm font-bold capitalize ${meterType === t ? 'border-zener-gold bg-zener-gold text-black' : 'border-zener-border text-white/60'}`}
-                >
-                  {t}
-                </button>
-              ))}
+    <Split
+      aside={
+        <div className="flex h-full flex-col">
+          <h1 className="max-w-md text-3xl font-black leading-[1.1] tracking-tight sm:text-4xl lg:text-[44px]">
+            Buy electricity in seconds.
+          </h1>
+          <p className="mt-4 max-w-sm text-[15px] leading-7 text-white/55">
+            Recharge any prepaid meter on any DisCo. No account needed. Your token appears the moment payment is confirmed.
+          </p>
+          <div className="mt-10 hidden max-w-sm rounded-2xl border border-white/[0.07] bg-white/[0.02] p-6 lg:block">
+            <p className="mb-4 text-xs font-semibold text-white/40">Your order</p>
+            {summary}
+          </div>
+          {recent.length ? (
+            <div className="mt-8 hidden max-w-sm lg:block">
+              <p className="mb-2 text-xs font-semibold text-white/40">Recent on this device</p>
+              <ul className="divide-y divide-white/[0.06]">
+                {recent.slice(0, 3).map((r) => (
+                  <li key={r.id}>
+                    <a href={`/order/${r.id}?key=${encodeURIComponent(r.key)}`} className="flex items-center justify-between py-2.5 text-sm text-white/70 hover:text-white">
+                      <span>{r.meter} <span className="text-white/30">· {r.disco}</span></span>
+                      <span className="font-semibold">{naira(r.amount)}</span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
             </div>
-          </Field>
+          ) : null}
+        </div>
+      }
+    >
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-xl font-bold">Meter details</h2>
+          <p className="mt-1 text-sm text-white/45">We confirm the account name with your DisCo before you pay.</p>
+        </div>
 
-          <Field label="Meter number">
-            <div className="flex gap-2">
-              <input
-                inputMode="numeric"
-                value={meterNumber}
-                onChange={(e) => setMeterNumber(e.target.value.replace(/\D/g, ''))}
-                onBlur={() => meterNumber.length >= 10 && !meter && void verify()}
-                placeholder="e.g. 45012345678"
-                className="w-full rounded-md border border-zener-border bg-white/[0.03] px-3 py-3 text-sm text-white outline-none placeholder:text-white/20 focus:border-zener-gold"
-              />
-              <Button variant="secondary" disabled={verifying} onClick={() => void verify()}>
-                {verifying ? <Loader2 size={16} className="animate-spin" /> : 'Verify'}
-              </Button>
-            </div>
-            {meter?.verified ? (
-              <div className="mt-2 flex items-start gap-2 rounded-md border border-zener-success/30 bg-zener-success/10 px-3 py-2 text-sm">
-                <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-zener-success" />
-                <span>
-                  <span className="font-bold">{meter.customer_name}</span>
-                  {meter.address ? <span className="block text-xs text-white/50">{meter.address}</span> : null}
-                  {meter.message ? <span className="block text-xs text-yellow-300">{meter.message}</span> : null}
-                </span>
-              </div>
-            ) : null}
-          </Field>
+        <Field label="Electricity company">
+          <DiscoPicker discos={discos} value={provider} onChange={setProvider} />
+        </Field>
 
-          <Field label="Amount (₦)">
+        <Field label="Meter type">
+          <Segmented value={meterType} onChange={setMeterType} options={[['prepaid', 'Prepaid'], ['postpaid', 'Postpaid']]} />
+        </Field>
+
+        <Field label="Meter number">
+          <div className="relative">
+            <input
+              inputMode="numeric"
+              autoComplete="off"
+              value={meterNumber}
+              onChange={(e) => setMeterNumber(e.target.value.replace(/\D/g, '').slice(0, 20))}
+              placeholder="Enter your meter number"
+              className={`${inputCls} pr-11 tracking-wide`}
+            />
+            <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2">
+              {verifying ? <Loader2 size={18} className="animate-spin text-white/40" /> : meter?.verified ? <Check size={18} className="text-zener-success" /> : null}
+            </span>
+          </div>
+          {meter?.verified ? (
+            <p className="mt-2 text-sm">
+              <span className="font-semibold text-white">{meter.customer_name}</span>
+              {meter.address ? <span className="text-white/40"> · {meter.address}</span> : null}
+            </p>
+          ) : verifyError ? (
+            <p className="mt-2 text-sm text-zener-danger">{verifyError}</p>
+          ) : null}
+          {meter?.message ? <p className="mt-1 text-xs text-yellow-300/90">{meter.message}</p> : null}
+        </Field>
+
+        <div className="pt-2">
+          <h2 className="text-xl font-bold">Payment</h2>
+        </div>
+
+        <Field label="Amount" hint={`Min ${formatCurrency(minNaira)}`}>
+          <div className="relative">
+            <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-lg font-semibold text-white/40">₦</span>
             <input
               inputMode="decimal"
               value={amount}
               onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))}
-              placeholder={`Minimum ${formatCurrency(minNaira)}`}
-              className="w-full rounded-md border border-zener-border bg-white/[0.03] px-3 py-3 text-sm text-white outline-none placeholder:text-white/20 focus:border-zener-gold"
+              placeholder="0"
+              className={`${inputCls} pl-9 text-lg font-semibold`}
             />
-            <div className="mt-2 flex flex-wrap gap-2">
-              {QUICK.map((q) => (
-                <button key={q} onClick={() => setAmount(String(q))} className="rounded-full border border-zener-border px-3 py-1 text-xs font-bold text-white/60 hover:border-zener-gold hover:text-zener-gold">
-                  {formatCurrency(q)}
-                </button>
-              ))}
-            </div>
-          </Field>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Phone number">
-              <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0803 123 4567" inputMode="tel"
-                className="w-full rounded-md border border-zener-border bg-white/[0.03] px-3 py-3 text-sm text-white outline-none placeholder:text-white/20 focus:border-zener-gold" />
-            </Field>
-            <Field label="Email (for your receipt)">
-              <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" type="email"
-                className="w-full rounded-md border border-zener-border bg-white/[0.03] px-3 py-3 text-sm text-white outline-none placeholder:text-white/20 focus:border-zener-gold" />
-            </Field>
           </div>
+          <div className="mt-2.5 grid grid-cols-4 gap-2">
+            {QUICK.map((q) => (
+              <button
+                key={q}
+                type="button"
+                onClick={() => setAmount(String(q))}
+                className={`rounded-lg border py-2 text-xs font-semibold transition ${
+                  value === q ? 'border-zener-gold/60 bg-zener-gold/10 text-zener-gold' : 'border-white/[0.08] text-white/55 hover:border-white/20 hover:text-white'
+                }`}
+              >
+                ₦{q.toLocaleString('en-NG')}
+              </button>
+            ))}
+          </div>
+        </Field>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Phone number">
+            <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0803 123 4567" inputMode="tel" autoComplete="tel" className={inputCls} />
+          </Field>
+          <Field label="Email">
+            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" type="email" autoComplete="email" className={inputCls} />
+          </Field>
         </div>
 
-        {error ? <p className="mt-5 rounded-md border border-zener-danger/40 bg-zener-danger/10 px-3 py-2 text-sm font-bold text-zener-danger">{error}</p> : null}
+        <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4 lg:hidden">{summary}</div>
 
-        <Button className="mt-6 w-full py-4 text-base" icon={Zap} disabled={paying || !meter?.verified} onClick={() => void pay()}>
-          {paying ? 'Starting payment…' : naira > 0 ? `Pay ${formatCurrency(naira)}` : 'Pay'}
-        </Button>
-        {fee > 0 ? <p className="mt-2 text-center text-xs text-white/40">Includes a {formatCurrency(fee)} service charge.</p> : null}
-      </Card>
+        {error ? <p className="rounded-lg bg-zener-danger/10 px-3.5 py-2.5 text-sm text-zener-danger">{error}</p> : null}
 
-      <div className="grid content-start gap-4">
-        <Card className="p-5">
-          <div className="flex items-center gap-2 text-sm font-bold"><ShieldCheck size={16} className="text-zener-gold" /> How it works</div>
-          <ol className="mt-3 space-y-2 text-sm text-white/60">
-            <li>1. Choose your DisCo and enter your meter number.</li>
-            <li>2. Check the name on the meter, then pay securely.</li>
-            <li>3. Copy your 20-digit token and enter it on your meter keypad.</li>
-          </ol>
-        </Card>
-        {recent.length ? (
-          <Card className="p-5">
-            <div className="flex items-center gap-2 text-sm font-bold"><Receipt size={16} className="text-zener-gold" /> Your recent purchases</div>
-            <div className="mt-3 divide-y divide-zener-border">
-              {recent.map((r) => (
-                <a key={r.id} href={`/order/${r.id}?key=${encodeURIComponent(r.key)}`} className="flex items-center justify-between py-3 text-sm hover:text-zener-gold">
-                  <span>
-                    <span className="block font-bold">{r.meter}</span>
-                    <span className="text-xs text-white/40">{r.disco} · {new Date(r.at).toLocaleDateString('en-NG')}</span>
-                  </span>
-                  <span className="font-black">{formatCurrency(koboToNaira(r.amount))}</span>
-                </a>
-              ))}
-            </div>
-            <p className="mt-2 text-xs text-white/30">Saved on this device only.</p>
-          </Card>
-        ) : null}
+        <button
+          type="button"
+          disabled={paying || !ready}
+          onClick={() => void pay()}
+          className="flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-zener-gold text-[15px] font-bold text-black transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {paying ? <Loader2 size={18} className="animate-spin" /> : <Zap size={18} />}
+          {paying ? 'Starting secure payment…' : value > 0 ? `Pay ${formatCurrency(value)}` : 'Pay'}
+        </button>
+        <p className="flex items-center justify-center gap-1.5 text-xs text-white/35">
+          <Lock size={12} /> Card, transfer or USSD, processed securely{brand.sandbox ? ' · test mode' : ''}
+        </p>
       </div>
-    </div>
+    </Split>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Order / token
+// ---------------------------------------------------------------------------
 
 const FINAL = ['vended', 'delivered', 'refunded', 'payment_failed', 'needs_review'];
 
@@ -321,81 +357,210 @@ function OrderPage({ id, orderKey }: { id: string; orderKey: string }) {
     };
   }, [id, orderKey]);
 
-  if (error) return <Card className="mx-auto max-w-xl p-6 text-sm text-zener-danger">{error}</Card>;
-  if (!order)
-    return (
-      <Card className="mx-auto grid max-w-xl place-items-center p-10">
-        <Loader2 className="animate-spin text-zener-gold" />
-      </Card>
-    );
+  const done = order?.status === 'vended' || order?.status === 'delivered';
+  const pending = order && !FINAL.includes(order.status);
 
-  const done = order.status === 'vended' || order.status === 'delivered';
   return (
-    <Card className="mx-auto max-w-xl p-6 sm:p-8" accent>
-      <p className="text-xs font-bold uppercase tracking-[0.22em] text-zener-gold">{done ? 'Purchase successful' : 'Purchase status'}</p>
-      <h1 className="mt-1 text-2xl font-black">
-        {done ? `${formatCurrency(koboToNaira(order.amount_kobo))} of electricity` : order.message || 'Processing…'}
-      </h1>
-
-      {done && order.token ? (
-        <div className="mt-6 rounded-lg border border-zener-gold/40 bg-zener-panel p-5 text-center">
-          <p className="text-xs uppercase tracking-[0.18em] text-white/40">Your token</p>
-          <p className="mt-2 flex flex-wrap justify-center gap-x-3 gap-y-1 text-2xl font-black tracking-[0.08em] text-zener-gold sm:text-3xl">
-            {formatToken(order.token).split(' ').map((group, i) => (
-              <span key={i} className="whitespace-nowrap">{group}</span>
-            ))}
+    <Split
+      aside={
+        <div>
+          <h1 className="max-w-md text-3xl font-black leading-[1.1] tracking-tight sm:text-4xl lg:text-[44px]">
+            {done ? 'Your token is ready.' : pending ? 'Almost there.' : order ? 'Purchase update' : 'Loading your order…'}
+          </h1>
+          <p className="mt-4 max-w-sm text-[15px] leading-7 text-white/55">
+            {done
+              ? 'Enter the 20-digit token on your meter keypad to load the units.'
+              : pending
+                ? 'This page updates automatically. You can close it and come back from the same device.'
+                : order?.message ?? ''}
           </p>
-          <Button
-            variant="secondary"
-            icon={Copy}
-            className="mt-4"
-            onClick={() => {
-              void navigator.clipboard?.writeText(order.token ?? '');
-              setCopied(true);
-            }}
-          >
-            {copied ? 'Copied' : 'Copy token'}
-          </Button>
-          <p className="mt-3 text-xs text-white/45">Enter this token on your meter keypad to load the units.</p>
         </div>
-      ) : done ? (
-        <p className="mt-6 rounded-lg border border-zener-success/30 bg-zener-success/10 p-4 text-sm">Your postpaid bill payment was received.</p>
-      ) : !FINAL.includes(order.status) ? (
-        <div className="mt-6 flex items-center gap-3 text-sm text-white/60">
-          <Loader2 size={18} className="animate-spin text-zener-gold" /> This page updates automatically.
-        </div>
-      ) : null}
+      }
+    >
+      {error ? (
+        <p className="rounded-lg bg-zener-danger/10 px-4 py-3 text-sm text-zener-danger">{error}</p>
+      ) : !order ? (
+        <div className="grid place-items-center py-24"><Loader2 className="animate-spin text-zener-gold" /></div>
+      ) : (
+        <div className="space-y-6">
+          {done && order.token ? (
+            <div className="rounded-2xl border border-zener-gold/30 bg-zener-gold/[0.06] p-6 text-center">
+              <p className="text-xs font-semibold text-white/45">Electricity token</p>
+              <p className="mt-3 flex flex-wrap justify-center gap-x-3 gap-y-1 font-mono text-[26px] font-bold tracking-wider text-zener-gold sm:text-3xl">
+                {tokenGroups(order.token).map((g, i) => <span key={i} className="whitespace-nowrap">{g}</span>)}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(order.token ?? '');
+                  setCopied(true);
+                }}
+                className="mt-5 inline-flex h-10 items-center gap-2 rounded-lg border border-white/10 px-4 text-sm font-semibold hover:border-white/25"
+              >
+                {copied ? <Check size={15} className="text-zener-success" /> : <Copy size={15} />} {copied ? 'Copied' : 'Copy token'}
+              </button>
+            </div>
+          ) : done ? (
+            <p className="rounded-2xl border border-zener-success/30 bg-zener-success/[0.06] p-6 text-sm">Your postpaid bill payment was received.</p>
+          ) : pending ? (
+            <div className="flex items-center gap-3 rounded-2xl border border-white/[0.07] p-6 text-sm text-white/60">
+              <Loader2 size={18} className="animate-spin text-zener-gold" /> {order.message || 'Processing…'}
+            </div>
+          ) : (
+            <p className="rounded-2xl border border-white/[0.07] p-6 text-sm text-white/70">{order.message}</p>
+          )}
 
-      <div className="mt-6 grid gap-2 rounded-lg border border-zener-border bg-black/20 p-4 text-sm">
-        <Row label="Meter" value={`${order.meter_number} · ${order.meter_type}`} />
-        <Row label="Name" value={order.customer_name} />
-        <Row label="DisCo" value={order.provider_name} />
-        <Row label="Amount" value={formatCurrency(koboToNaira(order.amount_kobo))} />
-        {done && order.energy_kwh ? <Row label="Units" value={`${order.energy_kwh.toFixed(1)} kWh`} /> : null}
-        <Row label="Reference" value={order.id.slice(0, 8).toUpperCase()} />
-      </div>
-      {order.sandbox ? <p className="mt-3 text-xs text-yellow-300">Test mode: this token is not valid on a real meter.</p> : null}
-      <Button className="mt-6 w-full" onClick={() => window.location.assign('/' + (window.location.search.includes('mode=vend') ? '?mode=vend' : ''))}>
-        Buy again
-      </Button>
-    </Card>
+          <dl className="space-y-3 rounded-2xl border border-white/[0.07] p-6 text-sm">
+            <SummaryRow label="Electricity company" value={order.provider_name} />
+            <SummaryRow label="Meter" value={`${order.meter_number} · ${order.meter_type}`} />
+            <SummaryRow label="Account name" value={order.customer_name} />
+            {done && order.energy_kwh ? <SummaryRow label="Units" value={`${order.energy_kwh.toFixed(1)} kWh`} /> : null}
+            <SummaryRow label="Reference" value={order.id.slice(0, 8).toUpperCase()} />
+            <div className="border-t border-white/[0.08] pt-3">
+              <SummaryRow label="Amount paid" value={naira(order.amount_kobo)} strong />
+            </div>
+          </dl>
+          {order.sandbox ? <p className="text-center text-xs text-yellow-300/80">Test mode: this token is not valid on a real meter.</p> : null}
+
+          <button
+            type="button"
+            onClick={() => window.location.assign('/' + (keepMode() ? `?${keepMode()}` : ''))}
+            className="flex h-12 w-full items-center justify-center rounded-xl bg-white/[0.06] text-sm font-bold hover:bg-white/[0.1]"
+          >
+            Buy again
+          </button>
+        </div>
+      )}
+    </Split>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+// ---------------------------------------------------------------------------
+// Primitives
+// ---------------------------------------------------------------------------
+
+const inputCls =
+  'h-12 w-full rounded-xl border border-white/[0.09] bg-white/[0.03] px-4 text-[15px] text-white outline-none transition placeholder:text-white/25 focus:border-zener-gold/70 focus:bg-white/[0.05] focus:ring-4 focus:ring-zener-gold/10';
+
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div className="block">
-      <span className="mb-2 block text-xs font-bold uppercase tracking-[0.16em] text-white/35">{label}</span>
+    <div>
+      <div className="mb-2 flex items-baseline justify-between">
+        <span className="text-sm font-medium text-white/70">{label}</span>
+        {hint ? <span className="text-xs text-white/35">{hint}</span> : null}
+      </div>
       {children}
     </div>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function SummaryRow({ label, value, strong = false }: { label: string; value?: string; strong?: boolean }) {
   return (
-    <div className="flex justify-between gap-4">
-      <span className="text-white/40">{label}</span>
-      <span className="text-right font-bold">{value}</span>
+    <div className="flex items-baseline justify-between gap-4">
+      <dt className="text-white/45">{label}</dt>
+      <dd className={`truncate text-right ${strong ? 'text-base font-bold text-white' : 'font-medium text-white/85'}`}>{value || <span className="text-white/20">—</span>}</dd>
     </div>
+  );
+}
+
+function Segmented<T extends string>({ value, onChange, options }: { value: T; onChange: (v: T) => void; options: [T, string][] }) {
+  return (
+    <div className="grid grid-cols-2 gap-1 rounded-xl border border-white/[0.09] bg-white/[0.03] p-1">
+      {options.map(([v, label]) => (
+        <button
+          key={v}
+          type="button"
+          onClick={() => onChange(v)}
+          className={`h-10 rounded-lg text-sm font-semibold transition ${value === v ? 'bg-white/[0.1] text-white shadow-sm' : 'text-white/45 hover:text-white/75'}`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function DiscoPicker({ discos, value, onChange }: { discos: Disco[]; value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = discos.find((d) => d.provider_code === value);
+  const shown = discos.filter((d) => `${d.provider_name} ${d.provider_code}`.toLowerCase().includes(q.toLowerCase()));
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`${inputCls} flex items-center justify-between text-left`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        {selected ? (
+          <span className="flex items-center gap-3">
+            <DiscoBadge code={selected.provider_code} />
+            <span>{selected.provider_name}</span>
+          </span>
+        ) : (
+          <span className="text-white/30">{discos.length ? 'Choose your DisCo' : 'Loading DisCos…'}</span>
+        )}
+        <ChevronDown size={18} className={`text-white/40 transition ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open ? (
+        <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-xl border border-white/[0.1] bg-[rgb(var(--zener-surface))] shadow-2xl">
+          <div className="flex items-center gap-2 border-b border-white/[0.07] px-3">
+            <Search size={15} className="text-white/35" />
+            <input
+              autoFocus
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search DisCo or state"
+              className="h-11 w-full bg-transparent text-sm text-white outline-none placeholder:text-white/30"
+            />
+          </div>
+          <ul role="listbox" className="max-h-72 overflow-auto py-1">
+            {shown.map((d) => (
+              <li key={d.provider_code}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={d.provider_code === value}
+                  onClick={() => {
+                    onChange(d.provider_code);
+                    setOpen(false);
+                    setQ('');
+                  }}
+                  className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm hover:bg-white/[0.05]"
+                >
+                  <span className="flex items-center gap-3">
+                    <DiscoBadge code={d.provider_code} />
+                    {d.provider_name}
+                  </span>
+                  {d.provider_code === value ? <Check size={16} className="text-zener-gold" /> : null}
+                </button>
+              </li>
+            ))}
+            {!shown.length ? <li className="px-3 py-3 text-sm text-white/40">No match</li> : null}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function DiscoBadge({ code }: { code: string }) {
+  return (
+    <span className="grid h-7 min-w-[44px] place-items-center rounded-md bg-white/[0.07] px-1.5 text-[10px] font-bold tracking-wide text-white/70">
+      {code}
+    </span>
   );
 }
