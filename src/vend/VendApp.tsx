@@ -30,6 +30,9 @@ import type { ApiMeter, Branding, Disco, GuestOrder, PublicMeter, User } from '.
 import { BrandContext, fallbackBranding, useBrand } from '../lib/brand';
 import { applyBranding } from '../lib/theme';
 import { formatCurrency } from '../lib/format';
+import { Landing, LoginPage } from './Landing';
+import { buyLink, href, readPrefill } from './links';
+import type { Nav, Prefill } from './links';
 
 // Buy-only product (production zenerlink.com), modelled on BuyPower: a quick
 // sign-up, then an account with a wallet, a buy form, transactions, saved
@@ -39,26 +42,8 @@ const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Network er
 const tokenGroups = (t: string) => t.replace(/(\d{4})(?=\d)/g, '$1 ').split(' ');
 const naira = (kobo: number) => formatCurrency(koboToNaira(kobo));
 const QUICK = [1000, 2000, 5000, 10000];
-// Staging previews this site with ?mode=vend; keep it on every link.
-const keepMode = () => (IS_PRODUCTION || import.meta.env.VITE_APP_MODE === 'vend' ? '' : 'mode=vend');
-const href = (path: string) => {
-  const m = keepMode();
-  return m ? `${path}${path.includes('?') ? '&' : '?'}${m}` : path;
-};
 const shortDate = (iso: string) =>
   new Date(iso).toLocaleString('en-NG', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
-
-type Nav = (path: string) => void;
-// A buy link (meter QR sticker, "pay for me" share) pre-fills the form.
-type Prefill = { disco: string; meter: string; type: 'prepaid' | 'postpaid' } | null;
-const readPrefill = (q: URLSearchParams): Prefill => {
-  const meter = (q.get('meter') ?? '').replace(/\D/g, '');
-  const disco = (q.get('disco') ?? '').toUpperCase().replace(/[^A-Z]/g, '');
-  if (meter.length < 6 || !disco) return null;
-  return { disco, meter, type: q.get('type') === 'postpaid' ? 'postpaid' : 'prepaid' };
-};
-const buyLink = (m: { provider_code: string; meter_number: string; meter_type: string }) =>
-  window.location.origin + href(`/buy?disco=${m.provider_code}&meter=${m.meter_number}&type=${m.meter_type}`);
 
 // Signed-in state shared by every account page.
 type AccountCtx = {
@@ -113,7 +98,9 @@ export default function VendRoot() {
   const nav = useCallback<Nav>((p) => {
     window.history.pushState(null, '', href(p));
     setPath(window.location.pathname + window.location.search);
-    window.scrollTo(0, 0);
+    const id = p.split('#')[1];
+    if (id) window.setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }), 60);
+    else window.scrollTo(0, 0);
   }, []);
   const signOut = async () => {
     await api.logout();
@@ -137,7 +124,23 @@ export default function VendRoot() {
   } else if (checking) {
     page = <div className="grid min-h-screen place-items-center"><Loader2 className="animate-spin text-zener-gold" /></div>;
   } else if (!user) {
-    page = <AuthPage onDone={setUser} prefill={prefill} />;
+    // The public landing page at "/"; every other page asks to sign in first
+    // and stays on its URL (buy links keep their pre-filled meter).
+    page =
+      url.pathname === '/' && !prefill ? (
+        <Landing nav={nav} signedIn={false} />
+      ) : (
+        <LoginPage
+          prefill={prefill}
+          nav={nav}
+          onDone={(u) => {
+            setUser(u);
+            if (url.pathname === '/login') nav('/');
+          }}
+        />
+      );
+  } else if (url.pathname === '/home') {
+    page = <Landing nav={nav} signedIn />;
   } else {
     const p = url.pathname;
     const body = orderMatch ? (
@@ -216,123 +219,6 @@ const initials = (u: User) =>
     .join('');
 
 const firstName = (u: User) => (u.name || '').trim().split(/\s+/)[0] || '';
-
-// ---------------------------------------------------------------------------
-// Sign up / sign in
-// ---------------------------------------------------------------------------
-
-// One form for new and returning buyers: email and password, then Continue.
-// A new email gets an account; a known email signs in with that password.
-function AuthPage({ onDone, prefill }: { onDone: (u: User) => void; prefill: Prefill }) {
-  const brand = useBrand();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [show, setShow] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-
-  const emailOk = /^\S+@\S+\.\S+$/.test(email.trim());
-  const ready = emailOk && password.length >= 8;
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    if (!emailOk) return setError('Enter a valid email address.');
-    if (password.length < 8) return setError('Use at least 8 characters for your password.');
-    setBusy(true);
-    try {
-      let s;
-      try {
-        s = await api.register(email.trim(), '', '', password);
-      } catch (err) {
-        if (!(err instanceof ApiError && err.code === 'email_taken')) throw err;
-        s = await api.login(email.trim(), password);
-      }
-      onDone(s.user);
-    } catch (err) {
-      setError(
-        err instanceof ApiError && err.code === 'invalid_credentials'
-          ? 'This email already has an account and the password is wrong.'
-          : message(err),
-      );
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Split
-      aside={
-        <div>
-          <h1 className="max-w-md text-3xl font-black leading-[1.1] tracking-tight sm:text-4xl lg:text-[44px]">Buy electricity in seconds.</h1>
-          <p className="mt-4 max-w-sm text-[15px] leading-7 text-white/55">
-            Recharge any prepaid meter on any DisCo. Your meters and tokens are saved to your account.
-          </p>
-        </div>
-      }
-    >
-      <form onSubmit={(e) => void submit(e)} className="space-y-5" noValidate>
-        <div>
-          <h2 className="text-xl font-bold">Get started</h2>
-          <p className="mt-1 text-sm text-white/45">New here or coming back, just enter your email and password.</p>
-        </div>
-        {prefill ? (
-          <div className="flex items-center gap-3 rounded-xl border border-zener-gold/30 bg-zener-gold/[0.06] px-4 py-3 text-sm">
-            <QrCode size={18} className="shrink-0 text-zener-gold" />
-            <span className="text-white/75">
-              Buying for meter <span className="font-semibold text-white">{prefill.meter}</span> ({prefill.disco}). Continue and enter the amount.
-            </span>
-          </div>
-        ) : null}
-        <Field label="Email">
-          <input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
-            type="email"
-            autoComplete="email"
-            autoFocus
-            className={inputCls}
-          />
-        </Field>
-        <Field label="Password" hint="At least 8 characters">
-          <div className="relative">
-            <input
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              type={show ? 'text' : 'password'}
-              autoComplete="current-password"
-              className={`${inputCls} pr-11`}
-            />
-            <button
-              type="button"
-              onClick={() => setShow((v) => !v)}
-              aria-label={show ? 'Hide password' : 'Show password'}
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-white/40 hover:text-white/70"
-            >
-              {show ? <EyeOff size={17} /> : <Eye size={17} />}
-            </button>
-          </div>
-        </Field>
-
-        {error ? <p className="rounded-lg bg-zener-danger/10 px-3.5 py-2.5 text-sm text-zener-danger">{error}</p> : null}
-
-        <button
-          type="submit"
-          disabled={busy || !ready}
-          className="flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-zener-gold text-[15px] font-bold text-black transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {busy && <Loader2 size={18} className="animate-spin" />}
-          Continue
-        </button>
-        {brand.support_email ? (
-          <p className="text-center text-xs text-white/35">
-            Forgot your password? Email <a className="text-white/60 underline-offset-2 hover:underline" href={`mailto:${brand.support_email}`}>{brand.support_email}</a>
-          </p>
-        ) : null}
-      </form>
-    </Split>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Signed-in shell: header with wallet, sidebar navigation
