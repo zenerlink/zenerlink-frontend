@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
+  ArrowDownToLine,
   Check,
   ChevronDown,
   Copy,
@@ -12,6 +13,10 @@ import {
   Lock,
   LogOut,
   Plus,
+  Printer,
+  QrCode,
+  Share2,
+  X,
   Receipt,
   Search,
   Trash2,
@@ -19,6 +24,8 @@ import {
   Wallet,
   Zap,
 } from 'lucide-react';
+import QRCode from 'qrcode';
+import logo from '../assets/logo-icon-white.svg';
 import { AppLogo } from '../components/ui/AppLogo';
 import { ApiError, IS_PRODUCTION, account, api, guest, koboToNaira, nairaToKobo, setSignedOutHandler } from '../lib/api';
 import type { ApiMeter, Branding, Disco, GuestOrder, PublicMeter, User } from '../lib/api';
@@ -44,6 +51,16 @@ const shortDate = (iso: string) =>
   new Date(iso).toLocaleString('en-NG', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 type Nav = (path: string) => void;
+// A buy link (meter QR sticker, "pay for me" share) pre-fills the form.
+type Prefill = { disco: string; meter: string; type: 'prepaid' | 'postpaid' } | null;
+const readPrefill = (q: URLSearchParams): Prefill => {
+  const meter = (q.get('meter') ?? '').replace(/\D/g, '');
+  const disco = (q.get('disco') ?? '').toUpperCase().replace(/[^A-Z]/g, '');
+  if (meter.length < 6 || !disco) return null;
+  return { disco, meter, type: q.get('type') === 'postpaid' ? 'postpaid' : 'prepaid' };
+};
+const buyLink = (m: { provider_code: string; meter_number: string; meter_type: string }) =>
+  window.location.origin + href(`/buy?disco=${m.provider_code}&meter=${m.meter_number}&type=${m.meter_type}`);
 
 // Signed-in state shared by every account page.
 type AccountCtx = {
@@ -109,6 +126,7 @@ export default function VendRoot() {
   const url = new URL(path, window.location.origin);
   const orderMatch = url.pathname.match(/^\/order\/([0-9a-f-]{36})/i);
   const key = url.searchParams.get('key');
+  const prefill = readPrefill(url.searchParams);
 
   let page: React.ReactNode;
   if (orderMatch && key) {
@@ -121,7 +139,7 @@ export default function VendRoot() {
   } else if (checking) {
     page = <div className="grid min-h-screen place-items-center"><Loader2 className="animate-spin text-zener-gold" /></div>;
   } else if (!user) {
-    page = <AuthPage onDone={setUser} />;
+    page = <AuthPage onDone={setUser} prefill={prefill} />;
   } else {
     const p = url.pathname;
     const body = orderMatch ? (
@@ -139,7 +157,7 @@ export default function VendRoot() {
     ) : p.startsWith('/help') ? (
       <HelpPage />
     ) : (
-      <BuyPage meterId={url.searchParams.get('meter')} payWallet={url.searchParams.get('pay') === 'wallet'} />
+      <BuyPage meterId={url.searchParams.get('meter_id')} prefill={prefill} payWallet={url.searchParams.get('pay') === 'wallet'} />
     );
     page = (
       <Acct.Provider value={{ user, setUser, nav, path: p, walletKobo, refreshWallet, signOut }}>
@@ -193,7 +211,7 @@ const firstName = (u: User) => (u.name || '').trim().split(/\s+/)[0] || '';
 
 // One form for new and returning buyers: email and password, then Continue.
 // A new email gets an account; a known email signs in with that password.
-function AuthPage({ onDone }: { onDone: (u: User) => void }) {
+function AuthPage({ onDone, prefill }: { onDone: (u: User) => void; prefill: Prefill }) {
   const brand = useBrand();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -245,6 +263,14 @@ function AuthPage({ onDone }: { onDone: (u: User) => void }) {
           <h2 className="text-xl font-bold">Get started</h2>
           <p className="mt-1 text-sm text-white/45">New here or coming back, just enter your email and password.</p>
         </div>
+        {prefill ? (
+          <div className="flex items-center gap-3 rounded-xl border border-zener-gold/30 bg-zener-gold/[0.06] px-4 py-3 text-sm">
+            <QrCode size={18} className="shrink-0 text-zener-gold" />
+            <span className="text-white/75">
+              Buying for meter <span className="font-semibold text-white">{prefill.meter}</span> ({prefill.disco}). Continue and enter the amount.
+            </span>
+          </div>
+        ) : null}
         <Field label="Email">
           <input
             value={email}
@@ -310,7 +336,8 @@ const NAV: [string, string, typeof Zap][] = [
   ['/help', 'Help', LifeBuoy],
 ];
 
-const isActive = (path: string, to: string) => (to === '/' ? path === '/' || path.startsWith('/order/') : path.startsWith(to));
+const isActive = (path: string, to: string) =>
+  to === '/' ? path === '/' || path.startsWith('/buy') || path.startsWith('/order/') : path.startsWith(to);
 
 function Shell({ children }: { children: React.ReactNode }) {
   const brand = useBrand();
@@ -449,14 +476,14 @@ const card = 'rounded-2xl border border-white/[0.07] bg-white/[0.02]';
 // Buy
 // ---------------------------------------------------------------------------
 
-function BuyPage({ meterId, payWallet }: { meterId: string | null; payWallet: boolean }) {
+function BuyPage({ meterId, prefill, payWallet }: { meterId: string | null; prefill: Prefill; payWallet: boolean }) {
   const { user, nav, walletKobo, refreshWallet } = useAcct();
   const [discos, setDiscos] = useState<Disco[]>([]);
   const [saved, setSaved] = useState<ApiMeter[]>([]);
   const [recent, setRecent] = useState<GuestOrder[]>([]);
-  const [provider, setProvider] = useState('');
-  const [meterType, setMeterType] = useState<'prepaid' | 'postpaid'>('prepaid');
-  const [meterNumber, setMeterNumber] = useState('');
+  const [provider, setProvider] = useState(prefill?.disco ?? '');
+  const [meterType, setMeterType] = useState<'prepaid' | 'postpaid'>(prefill?.type ?? 'prepaid');
+  const [meterNumber, setMeterNumber] = useState(prefill?.meter ?? '');
   const [meter, setMeter] = useState<PublicMeter | null>(null);
   const [verifyError, setVerifyError] = useState('');
   const [verifying, setVerifying] = useState(false);
@@ -477,7 +504,9 @@ function BuyPage({ meterId, payWallet }: { meterId: string | null; payWallet: bo
       .discos()
       .then((r) => {
         setDiscos(r.discos);
-        setProvider((p) => p || r.discos.find((d) => d.provider_code === 'IKEDC')?.provider_code || r.discos[0]?.provider_code || '');
+        setProvider(
+          (p) => r.discos.find((d) => d.provider_code === p)?.provider_code || r.discos.find((d) => d.provider_code === 'IKEDC')?.provider_code || r.discos[0]?.provider_code || '',
+        );
       })
       .catch((e) => setError(message(e)));
     api
@@ -843,6 +872,8 @@ function MetersPage() {
   const { nav } = useAcct();
   const [meters, setMeters] = useState<ApiMeter[] | null>(null);
   const { orders } = useOrders(100);
+  const [qr, setQr] = useState<ApiMeter | null>(null);
+  const closeQr = useCallback(() => setQr(null), []);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -866,7 +897,7 @@ function MetersPage() {
     <>
       <PageTitle
         title="My meters"
-        sub="Meters you buy for are saved here automatically."
+        sub="Meters you buy for are saved here. Share a meter's QR code so anyone can scan and pay for it."
         action={
           <button type="button" onClick={() => nav('/')} className="flex h-10 items-center gap-2 rounded-lg bg-zener-gold px-4 text-sm font-bold text-black hover:brightness-110">
             <Plus size={16} strokeWidth={3} /> Add meter
@@ -900,7 +931,10 @@ function MetersPage() {
                     <td className="max-w-[200px] truncate px-5 py-4 text-white/45" title={m.address}>{m.address || '—'}</td>
                     <td className="whitespace-nowrap px-5 py-4 text-right font-bold">{l ? naira(l.amount_kobo) : '—'}</td>
                     <td className="whitespace-nowrap px-5 py-4 text-right">
-                      <button type="button" onClick={() => nav(`/?meter=${m.id}`)} className="mr-2 rounded-lg bg-zener-gold/10 px-3 py-1.5 text-xs font-bold text-zener-gold hover:bg-zener-gold/20">
+                      <button type="button" onClick={() => setQr(m)} className="mr-2 inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-1.5 text-xs font-bold text-white/75 hover:border-white/25 hover:text-white">
+                        <QrCode size={13} /> QR
+                      </button>
+                      <button type="button" onClick={() => nav(`/?meter_id=${m.id}`)} className="mr-2 rounded-lg bg-zener-gold/10 px-3 py-1.5 text-xs font-bold text-zener-gold hover:bg-zener-gold/20">
                         Buy
                       </button>
                       <button type="button" onClick={() => remove(m)} aria-label="Delete meter" className="rounded-lg p-1.5 text-white/35 hover:bg-zener-danger/10 hover:text-zener-danger">
@@ -923,7 +957,8 @@ function MetersPage() {
                     {l ? <span className="block text-xs text-white/35">Last: {naira(l.amount_kobo)}</span> : null}
                   </span>
                   <span className="flex shrink-0 items-center gap-1">
-                    <button type="button" onClick={() => nav(`/?meter=${m.id}`)} className="rounded-lg bg-zener-gold/10 px-3 py-1.5 text-xs font-bold text-zener-gold">Buy</button>
+                    <button type="button" onClick={() => setQr(m)} aria-label="Meter QR code" className="rounded-lg border border-white/[0.1] p-1.5 text-white/70"><QrCode size={15} /></button>
+                    <button type="button" onClick={() => nav(`/?meter_id=${m.id}`)} className="rounded-lg bg-zener-gold/10 px-3 py-1.5 text-xs font-bold text-zener-gold">Buy</button>
                     <button type="button" onClick={() => remove(m)} aria-label="Delete meter" className="rounded-lg p-1.5 text-white/35 hover:text-zener-danger">
                       <Trash2 size={15} />
                     </button>
@@ -934,9 +969,163 @@ function MetersPage() {
           </ul>
         </div>
       )}
+      {qr ? <MeterQrDialog meter={qr} onClose={closeQr} /> : null}
     </>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Meter QR: a buy link for one meter, as a code, a sticker and a share
+// ---------------------------------------------------------------------------
+
+const loadImage = (src: string) =>
+  new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+
+// Draws the printable sticker (900x1200) and returns it as a PNG data URL.
+async function drawSticker(m: ApiMeter, link: string, brandName: string, logoUrl: string): Promise<string> {
+  const W = 900;
+  const H = 1200;
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  const g = c.getContext('2d')!;
+  const font = getComputedStyle(document.body).fontFamily || 'system-ui, sans-serif';
+  g.fillStyle = '#ffffff';
+  g.fillRect(0, 0, W, H);
+  g.fillStyle = '#0b0b0b';
+  g.fillRect(0, 0, W, 170);
+  g.fillStyle = '#d4943a';
+  g.fillRect(0, 170, W, 10);
+
+  let x = W / 2;
+  try {
+    const logo = await loadImage(logoUrl);
+    g.drawImage(logo, 0, 0, logo.width || 64, logo.height || 64, 70, 53, 64, 64);
+    x = 150;
+  } catch {
+    /* sticker still works without the logo */
+  }
+  g.fillStyle = '#ffffff';
+  g.font = `900 46px ${font}`;
+  g.textBaseline = 'middle';
+  g.textAlign = x === W / 2 ? 'center' : 'left';
+  g.fillText(brandName.toUpperCase().split('').join(String.fromCharCode(8202)), x, 87);
+
+  g.textAlign = 'center';
+  g.fillStyle = '#0b0b0b';
+  g.font = `800 50px ${font}`;
+  g.fillText('Scan to buy electricity', W / 2, 270);
+
+  const qr = await loadImage(await QRCode.toDataURL(link, { margin: 0, width: 600, errorCorrectionLevel: 'M' }));
+  g.drawImage(qr, (W - 600) / 2, 330, 600, 600);
+
+  g.font = `800 58px ui-monospace, SFMono-Regular, Menlo, monospace`;
+  g.fillText(m.meter_number, W / 2, 1010);
+  g.fillStyle = '#555555';
+  g.font = `500 32px ${font}`;
+  g.fillText([m.provider_name || m.provider_code, m.customer_name].filter(Boolean).join(' · ').slice(0, 48), W / 2, 1068);
+  g.fillStyle = '#999999';
+  g.font = `500 28px ${font}`;
+  g.fillText(window.location.host, W / 2, 1140);
+  return c.toDataURL('image/png');
+}
+
+function MeterQrDialog({ meter, onClose }: { meter: ApiMeter; onClose: () => void }) {
+  const brand = useBrand();
+  const link = buyLink(meter);
+  const [qr, setQr] = useState('');
+  const [sticker, setSticker] = useState('');
+  const [copied, setCopied] = useState(false);
+  const fileName = `${brand.display_name.toLowerCase()}-meter-${meter.meter_number}.png`;
+
+  useEffect(() => {
+    QRCode.toDataURL(link, { margin: 1, width: 480, errorCorrectionLevel: 'M' }).then(setQr).catch(() => undefined);
+    drawSticker(meter, link, brand.display_name, brand.logo_url || logo).then(setSticker).catch(() => undefined);
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    document.addEventListener('keydown', esc);
+    return () => document.removeEventListener('keydown', esc);
+  }, [link, meter, brand.display_name, brand.logo_url, onClose]);
+
+  const copy = () => {
+    void navigator.clipboard?.writeText(link);
+    setCopied(true);
+  };
+  const share = async () => {
+    const text = `Pay for my electricity: meter ${meter.meter_number} (${meter.provider_name || meter.provider_code})`;
+    try {
+      if (sticker) {
+        const file = new File([await (await fetch(sticker)).blob()], fileName, { type: 'image/png' });
+        if (navigator.canShare?.({ files: [file] })) return await navigator.share({ files: [file], text: `${text}\n${link}` });
+      }
+      if (navigator.share) return await navigator.share({ title: text, text, url: link });
+      copy();
+    } catch {
+      /* share sheet closed */
+    }
+  };
+  const print = () => {
+    const w = window.open('', '_blank');
+    if (!w || !sticker) return;
+    w.document.write(
+      `<!doctype html><title>${fileName}</title><style>@page{margin:12mm}body{margin:0;display:grid;place-items:center;min-height:100vh}img{width:90mm;border:1px solid #ddd}</style>` +
+        `<img src="${sticker}" onload="setTimeout(()=>{print()},100)">`,
+    );
+    w.document.close();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4 backdrop-blur-sm" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div role="dialog" aria-modal="true" aria-label="Meter QR code" className="w-full max-w-sm rounded-2xl border border-white/[0.1] bg-[rgb(var(--zener-surface))] p-6 shadow-2xl">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-lg font-bold">Meter QR code</h2>
+            <p className="truncate text-sm text-white/45">{meter.meter_number} · {meter.customer_name || meter.provider_code}</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close" className="rounded-lg p-1.5 text-white/45 hover:bg-white/[0.06] hover:text-white">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="mx-auto mt-5 grid aspect-square w-full max-w-[260px] place-items-center rounded-xl bg-white p-3">
+          {qr ? <img src={qr} alt={`QR code to buy electricity for meter ${meter.meter_number}`} className="h-full w-full" /> : <Loader2 className="animate-spin text-black/40" />}
+        </div>
+        <p className="mt-4 text-center text-sm text-white/55">
+          Anyone who scans this goes straight to paying for this meter. Stick it on the meter or send it to family.
+        </p>
+        <div className="mt-5 grid grid-cols-2 gap-2">
+          <button type="button" onClick={() => void share()} className="flex h-11 items-center justify-center gap-2 rounded-xl bg-zener-gold text-sm font-bold text-black hover:brightness-110">
+            <Share2 size={16} /> Share
+          </button>
+          <button type="button" onClick={copy} className="flex h-11 items-center justify-center gap-2 rounded-xl bg-white/[0.07] text-sm font-bold hover:bg-white/[0.12]">
+            {copied ? <Check size={16} className="text-zener-success" /> : <Copy size={16} />} {copied ? 'Copied' : 'Copy link'}
+          </button>
+          <a
+            href={sticker || undefined}
+            download={fileName}
+            aria-disabled={!sticker}
+            className="flex h-11 items-center justify-center gap-2 rounded-xl bg-white/[0.07] text-sm font-bold hover:bg-white/[0.12] aria-disabled:pointer-events-none aria-disabled:opacity-40"
+          >
+            <ArrowDownToLine size={16} /> Download
+          </a>
+          <button
+            type="button"
+            onClick={print}
+            disabled={!sticker}
+            className="flex h-11 items-center justify-center gap-2 rounded-xl bg-white/[0.07] text-sm font-bold hover:bg-white/[0.12] disabled:opacity-40"
+          >
+            <Printer size={16} /> Print sticker
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 // ---------------------------------------------------------------------------
 // Wallet
