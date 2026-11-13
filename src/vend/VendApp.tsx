@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronDown, Copy, Loader2, Lock, Search, Zap } from 'lucide-react';
+import { Check, ChevronDown, Copy, Loader2, Lock, Search } from 'lucide-react';
 import { AppLogo } from '../components/ui/AppLogo';
 import { ApiError, api, guest, koboToNaira, nairaToKobo } from '../lib/api';
 import type { Branding, Disco, GuestOrder, PublicMeter } from '../lib/api';
@@ -314,7 +314,7 @@ function BuyPage() {
           onClick={() => void pay()}
           className="flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-zener-gold text-[15px] font-bold text-black transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {paying ? <Loader2 size={18} className="animate-spin" /> : <Zap size={18} />}
+          {paying && <Loader2 size={18} className="animate-spin" />}
           {paying ? 'Starting secure payment…' : value > 0 ? `Pay ${formatCurrency(value)}` : 'Pay'}
         </button>
         <p className="flex items-center justify-center gap-1.5 text-xs text-white/35">
