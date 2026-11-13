@@ -191,44 +191,43 @@ const firstName = (u: User) => (u.name || '').trim().split(/\s+/)[0] || '';
 // Sign up / sign in
 // ---------------------------------------------------------------------------
 
+// One form for new and returning buyers: email and password, then Continue.
+// A new email gets an account; a known email signs in with that password.
 function AuthPage({ onDone }: { onDone: (u: User) => void }) {
   const brand = useBrand();
-  const [mode, setMode] = useState<'signup' | 'signin'>('signup');
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  const signup = mode === 'signup';
-  const phoneOk = /^\+?\d{10,14}$/.test(phone.replace(/[\s-]/g, ''));
   const emailOk = /^\S+@\S+\.\S+$/.test(email.trim());
-  const ready = signup ? name.trim().length > 1 && phoneOk && emailOk && password.length >= 8 : emailOk && password.length > 0;
+  const ready = emailOk && password.length >= 8;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (signup && !phoneOk) return setError('Enter a valid phone number.');
-    if (signup && password.length < 8) return setError('Use at least 8 characters for your password.');
+    if (!emailOk) return setError('Enter a valid email address.');
+    if (password.length < 8) return setError('Use at least 8 characters for your password.');
     setBusy(true);
     try {
-      const s = signup
-        ? await api.register(email.trim(), phone.replace(/[\s-]/g, ''), name.trim(), password)
-        : await api.login(email.trim(), password);
+      let s;
+      try {
+        s = await api.register(email.trim(), '', '', password);
+      } catch (err) {
+        if (!(err instanceof ApiError && err.code === 'email_taken')) throw err;
+        s = await api.login(email.trim(), password);
+      }
       onDone(s.user);
     } catch (err) {
-      setError(err instanceof ApiError && err.code === 'email_taken' ? 'An account with this email already exists. Sign in instead.' : message(err));
+      setError(
+        err instanceof ApiError && err.code === 'invalid_credentials'
+          ? 'This email already has an account and the password is wrong.'
+          : message(err),
+      );
       setBusy(false);
     }
   };
-
-  const steps = [
-    ['Create your account', 'Name, phone and email. Takes 30 seconds.'],
-    ['Enter your meter', 'We confirm the name on it with your DisCo.'],
-    ['Pay and get your token', 'Card, transfer or USSD. Your token shows instantly.'],
-  ];
 
   return (
     <Split
@@ -238,55 +237,32 @@ function AuthPage({ onDone }: { onDone: (u: User) => void }) {
           <p className="mt-4 max-w-sm text-[15px] leading-7 text-white/55">
             Recharge any prepaid meter on any DisCo. Your meters and tokens are saved to your account.
           </p>
-          <ol className="mt-10 hidden max-w-sm space-y-5 lg:block">
-            {steps.map(([t, d], i) => (
-              <li key={t} className="flex gap-4">
-                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-zener-gold/40 text-xs font-bold text-zener-gold">{i + 1}</span>
-                <span>
-                  <span className="block text-sm font-semibold text-white/90">{t}</span>
-                  <span className="block text-sm text-white/45">{d}</span>
-                </span>
-              </li>
-            ))}
-          </ol>
         </div>
       }
     >
       <form onSubmit={(e) => void submit(e)} className="space-y-5" noValidate>
         <div>
-          <h2 className="text-xl font-bold">{signup ? 'Create your account' : 'Welcome back'}</h2>
-          <p className="mt-1 text-sm text-white/45">{signup ? 'You need an account to buy. It only takes a moment.' : 'Sign in to buy electricity.'}</p>
+          <h2 className="text-xl font-bold">Get started</h2>
+          <p className="mt-1 text-sm text-white/45">New here or coming back, just enter your email and password.</p>
         </div>
-
-        <Segmented
-          value={mode}
-          onChange={(m) => {
-            setMode(m);
-            setError('');
-          }}
-          options={[['signup', 'Create account'], ['signin', 'Sign in']]}
-        />
-
-        {signup ? (
-          <Field label="Full name">
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ada Okafor" autoComplete="name" className={inputCls} />
-          </Field>
-        ) : null}
         <Field label="Email">
-          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" type="email" autoComplete="email" className={inputCls} />
+          <input
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            type="email"
+            autoComplete="email"
+            autoFocus
+            className={inputCls}
+          />
         </Field>
-        {signup ? (
-          <Field label="Phone number">
-            <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0803 123 4567" inputMode="tel" autoComplete="tel" className={inputCls} />
-          </Field>
-        ) : null}
-        <Field label="Password" hint={signup ? 'At least 8 characters' : undefined}>
+        <Field label="Password" hint="At least 8 characters">
           <div className="relative">
             <input
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               type={show ? 'text' : 'password'}
-              autoComplete={signup ? 'new-password' : 'current-password'}
+              autoComplete="current-password"
               className={`${inputCls} pr-11`}
             />
             <button
@@ -308,9 +284,9 @@ function AuthPage({ onDone }: { onDone: (u: User) => void }) {
           className="flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-zener-gold text-[15px] font-bold text-black transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {busy && <Loader2 size={18} className="animate-spin" />}
-          {signup ? 'Create account' : 'Sign in'}
+          Continue
         </button>
-        {!signup && brand.support_email ? (
+        {brand.support_email ? (
           <p className="text-center text-xs text-white/35">
             Forgot your password? Email <a className="text-white/60 underline-offset-2 hover:underline" href={`mailto:${brand.support_email}`}>{brand.support_email}</a>
           </p>
@@ -319,7 +295,6 @@ function AuthPage({ onDone }: { onDone: (u: User) => void }) {
     </Split>
   );
 }
-
 
 // ---------------------------------------------------------------------------
 // Signed-in shell: header with wallet, sidebar navigation
@@ -1082,8 +1057,7 @@ function ProfilePage() {
     e.preventDefault();
     setError('');
     setDone(false);
-    if (name.trim().length < 2) return setError('Enter your full name.');
-    if (!/^\+?\d{10,14}$/.test(phone.replace(/[\s-]/g, ''))) return setError('Enter a valid phone number.');
+    if (phone.trim() && !/^\+?\d{10,14}$/.test(phone.replace(/[\s-]/g, ''))) return setError('Enter a valid phone number.');
     setSaving(true);
     try {
       const u = await account.updateProfile({ name: name.trim(), phone: phone.replace(/[\s-]/g, '') });
