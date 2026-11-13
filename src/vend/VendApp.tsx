@@ -179,7 +179,12 @@ export default function VendRoot() {
     ) : p.startsWith('/help') ? (
       <HelpPage />
     ) : (
-      <BuyPage meterId={url.searchParams.get('meter_id')} prefill={prefill} payWallet={url.searchParams.get('pay') === 'wallet'} />
+      <BuyPage
+        meterId={url.searchParams.get('meter_id')}
+        prefill={prefill}
+        prefillAmount={url.searchParams.get('amount')}
+        payWallet={url.searchParams.get('pay') === 'wallet'}
+      />
     );
     page = (
       <Acct.Provider value={{ user, setUser, nav, path: p, walletKobo, refreshWallet, signOut }}>
@@ -440,7 +445,17 @@ const card = 'rounded-2xl border border-white/[0.07] bg-white/[0.02]';
 // Buy
 // ---------------------------------------------------------------------------
 
-function BuyPage({ meterId, prefill, payWallet }: { meterId: string | null; prefill: Prefill; payWallet: boolean }) {
+function BuyPage({
+  meterId,
+  prefill,
+  prefillAmount,
+  payWallet,
+}: {
+  meterId: string | null;
+  prefill: Prefill;
+  prefillAmount?: string | null;
+  payWallet: boolean;
+}) {
   const { user, nav, walletKobo, refreshWallet } = useAcct();
   const [discos, setDiscos] = useState<Disco[]>([]);
   const [channels, setChannels] = useState<DeliveryChannel[]>([]);
@@ -456,7 +471,8 @@ function BuyPage({ meterId, prefill, payWallet }: { meterId: string | null; pref
   const [meter, setMeter] = useState<PublicMeter | null>(null);
   const [verifyError, setVerifyError] = useState('');
   const [verifying, setVerifying] = useState(false);
-  const [amount, setAmount] = useState('');
+  // "Buy again" passes the last amount (whole naira).
+  const [amount, setAmount] = useState(() => (prefillAmount && /^\d{1,7}$/.test(prefillAmount) ? prefillAmount : ''));
   const [method, setMethod] = useState<'checkout' | 'wallet'>(payWallet ? 'wallet' : 'checkout');
   const [error, setError] = useState('');
   const [paying, setPaying] = useState(false);
@@ -1777,11 +1793,20 @@ const FINAL = ['vended', 'delivered', 'refunded', 'payment_failed', 'needs_revie
 
 function OrderPage({ id }: { id: string }) {
   const { nav, refreshWallet } = useAcct();
+  const [order, setOrder] = useState<GuestOrder | null>(null);
+  // Buy again: same DisCo, meter and amount (without the fee), ready to pay.
+  const buyAgain = () => {
+    if (!order) return nav('/');
+    const naira = Math.round((order.amount_kobo - (order.fee_kobo ?? 0)) / 100);
+    const q = new URLSearchParams({ disco: order.provider_code, meter: order.meter_number, type: order.meter_type });
+    if (naira > 0) q.set('amount', String(naira));
+    nav(`/buy?${q.toString()}`);
+  };
   return (
     <div className="max-w-xl">
-      <OrderView load={() => account.get(id)} onFinal={refreshWallet} canShare />
+      <OrderView load={() => account.get(id)} onFinal={refreshWallet} onLoad={setOrder} canShare />
       <div className="mt-6 grid gap-3 sm:grid-cols-2">
-        <button type="button" onClick={() => nav('/')} className="flex h-12 items-center justify-center rounded-xl bg-zener-gold text-sm font-bold text-black hover:brightness-110">
+        <button type="button" onClick={buyAgain} className="flex h-12 items-center justify-center rounded-xl bg-zener-gold text-sm font-bold text-black hover:brightness-110">
           Buy again
         </button>
         <button type="button" onClick={() => nav('/transactions')} className="flex h-12 items-center justify-center rounded-xl bg-white/[0.06] text-sm font-bold hover:bg-white/[0.1]">
@@ -1792,13 +1817,24 @@ function OrderPage({ id }: { id: string }) {
   );
 }
 
-function OrderView({ load, onFinal, canShare = false }: { load: () => Promise<GuestOrder>; onFinal?: () => void; canShare?: boolean }) {
+function OrderView({
+  load,
+  onFinal,
+  onLoad,
+  canShare = false,
+}: {
+  load: () => Promise<GuestOrder>;
+  onFinal?: () => void;
+  onLoad?: (o: GuestOrder) => void;
+  canShare?: boolean;
+}) {
   const [order, setOrder] = useState<GuestOrder | null>(null);
   const [sharing, setSharing] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const loadRef = useRef(load);
   const finalRef = useRef(onFinal);
+  const loadedRef = useRef(onLoad);
 
   useEffect(() => {
     let stop = false;
@@ -1808,6 +1844,7 @@ function OrderView({ load, onFinal, canShare = false }: { load: () => Promise<Gu
         const o = await loadRef.current();
         if (stop) return;
         setOrder(o);
+        loadedRef.current?.(o);
         if (FINAL.includes(o.status)) finalRef.current?.();
         else if (attempt < 100) timer = window.setTimeout(() => void poll(attempt + 1), 3000);
       } catch (e) {
