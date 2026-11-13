@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowRight, ChevronDown, ChevronRight, Eye, EyeOff, Loader2, Lock, Menu, QrCode, UserRound, X } from 'lucide-react';
+import { ArrowRight, ChevronDown, Eye, EyeOff, Loader2, Lock, Menu, QrCode, UserRound, X } from 'lucide-react';
 import QRCode from 'qrcode';
 import { ApiError, api, guest } from '../lib/api';
 import type { Disco, User } from '../lib/api';
@@ -583,47 +583,38 @@ export function LoginPage({ onDone, prefill, nav }: { onDone: (u: User) => void;
     }
   };
 
-  const links: [string, string, () => void][] = [
-    ['Buy electricity', 'Recharge any prepaid meter on any DisCo', () => nav('/#buy')],
-    ['How it works', 'From meter number to token in three steps', () => nav('/#how')],
-    ['For estates and businesses', 'QR stickers for every meter you manage', () => nav('/#business')],
-    ['Visit our help center', 'Answers to common questions', () => nav('/#faq')],
+  const field =
+    'h-12 w-full rounded-md border border-white/15 bg-white/[0.03] px-4 text-[15px] text-white outline-none transition placeholder:text-white/30 focus:border-zener-gold/70';
+  const steps: ['email' | 'password', string][] = [
+    ['email', 'Email'],
+    ['password', 'Password'],
   ];
 
-  const field =
-    'h-14 w-full rounded-md border border-white/20 bg-transparent px-4 text-[16px] text-white outline-none transition placeholder:text-white/40 focus:border-white/70';
-
   return (
-    <div className="min-h-screen bg-black text-white">
-      <header className="mx-auto flex h-[72px] max-w-7xl items-center px-5 sm:px-8">
+    <div className="relative flex min-h-screen flex-col overflow-hidden bg-black text-white">
+      <header className="mx-auto flex h-[72px] w-full max-w-6xl items-center justify-between px-5 sm:px-8">
         <Wordmark onClick={() => nav('/')} />
+        <button type="button" onClick={() => nav('/')} className="text-[13px] text-white/50 hover:text-white">
+          Back to site
+        </button>
       </header>
-      <main className="mx-auto grid max-w-7xl items-center gap-12 px-5 pb-16 pt-4 sm:px-8 lg:min-h-[calc(100vh-72px)] lg:grid-cols-[1.15fr_1fr] lg:gap-20 lg:pb-24">
-        <div className="rounded-lg border border-white/[0.12] px-6 py-12 sm:px-14 sm:py-20 lg:px-24">
-          <form onSubmit={(e) => void submit(e)} noValidate className="mx-auto max-w-md">
-            <h1 className="text-4xl font-black tracking-tight sm:text-[44px]">{step === 'email' ? 'Sign in' : 'Welcome'}</h1>
-            {prefill ? (
-              <p className="mt-4 flex items-center gap-2.5 rounded-md bg-zener-gold/[0.08] px-3.5 py-2.5 text-sm text-white/75">
-                <QrCode size={16} className="shrink-0 text-zener-gold" /> Buying for meter <span className="font-semibold text-white">{prefill.meter}</span> ({prefill.disco})
-              </p>
-            ) : null}
 
-            {step === 'email' ? (
+      <main className="relative z-10 flex flex-1 items-center justify-center px-5 pb-40 pt-6">
+        <form onSubmit={(e) => void submit(e)} noValidate className="w-full max-w-[380px]">
+          <ol className="flex gap-6 font-mono text-[11px] uppercase tracking-[0.18em]">
+            {steps.map(([k, label], i) => (
+              <li key={k} className={step === k ? 'text-zener-gold' : 'text-white/30'}>
+                {String(i + 1).padStart(2, '0')} {label}
+              </li>
+            ))}
+          </ol>
+          <h1 className="mt-5 text-[32px] font-bold leading-tight tracking-tight">
+            {step === 'email' ? 'Your electricity account' : 'Enter your password'}
+          </h1>
+          <p className="mt-2 text-[14px] leading-6 text-white/50">
+            {step === 'email' ? 'Sign in or create one with the same step.' : (
               <>
-                <input
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  type="email"
-                  autoComplete="email"
-                  autoFocus
-                  placeholder="Email"
-                  aria-label="Email"
-                  className={`${field} mt-8`}
-                />
-                <p className="mt-3 text-xs text-white/40">New to {brand.display_name}? Enter your email and we’ll set up your account.</p>
-              </>
-            ) : (
-              <>
+                {email.trim()}{' '}
                 <button
                   type="button"
                   onClick={() => {
@@ -631,71 +622,90 @@ export function LoginPage({ onDone, prefill, nav }: { onDone: (u: User) => void;
                     setPassword('');
                     setError('');
                   }}
-                  className="mt-3 text-sm text-white/55 hover:text-white"
+                  className="text-white/80 underline underline-offset-4 hover:text-white"
                 >
-                  {email.trim()} · <span className="underline underline-offset-4">Change</span>
+                  change
                 </button>
-                <div className="relative mt-8">
-                  <input
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    type={show ? 'text' : 'password'}
-                    autoComplete="current-password"
-                    autoFocus
-                    placeholder="Password"
-                    aria-label="Password"
-                    className={`${field} pr-12`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShow((v) => !v)}
-                    aria-label={show ? 'Hide password' : 'Show password'}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-white/45 hover:text-white/80"
-                  >
-                    {show ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
-                </div>
-                <p className="mt-3 text-xs text-white/40">New here? Choose a password (8+ characters) and we’ll create your account.</p>
               </>
             )}
+          </p>
+          {prefill ? (
+            <p className="mt-5 flex items-center gap-2.5 border-l-2 border-zener-gold pl-3 text-[13px] text-white/70">
+              <QrCode size={15} className="shrink-0 text-zener-gold" /> Meter {prefill.meter} ({prefill.disco}) is ready to pay for.
+            </p>
+          ) : null}
 
-            {error ? <p className="mt-4 rounded-md bg-zener-danger/10 px-3.5 py-2.5 text-sm text-zener-danger">{error}</p> : null}
-
-            <button
-              type="submit"
-              disabled={busy || (step === 'email' ? !emailOk : password.length < 8)}
-              className="mt-8 flex h-12 w-full items-center justify-center gap-2 rounded-md bg-white text-[15px] font-bold text-black transition hover:bg-white/85 disabled:opacity-40"
-            >
-              {busy && <Loader2 size={17} className="animate-spin" />}
-              {step === 'email' ? 'Next' : 'Continue'}
-            </button>
-
-            <button type="button" onClick={() => setHelp((h) => !h)} className="mt-10 flex items-center gap-2 text-[15px] font-bold">
-              Need help? <ChevronDown size={17} className={`text-white/60 transition ${help ? 'rotate-180' : ''}`} />
-            </button>
-            {help ? (
-              <div className="mt-3 space-y-2 text-sm text-white/55">
-                <p>Forgot your password? Email {brand.support_email ? <a href={`mailto:${brand.support_email}`} className="text-white underline underline-offset-4">{brand.support_email}</a> : 'our support team'} from the address on your account.</p>
-                <p>One account works for buying, your wallet, saved meters and every token you have bought.</p>
-              </div>
-            ) : null}
-          </form>
-        </div>
-
-        <ul className="border-t border-white/[0.12] lg:border-t-0">
-          {links.map(([t, d, go]) => (
-            <li key={t}>
-              <button type="button" onClick={go} className="group flex w-full items-center justify-between gap-6 border-b border-white/[0.12] px-2 py-6 text-left">
-                <span>
-                  <span className="block text-lg font-semibold text-white/90">{t}</span>
-                  <span className="mt-1 block text-[15px] text-white/50">{d}</span>
-                </span>
-                <ChevronRight size={22} strokeWidth={1.4} className="shrink-0 text-white/50 transition group-hover:translate-x-1 group-hover:text-white" />
+          {step === 'email' ? (
+            <input
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              type="email"
+              autoComplete="email"
+              autoFocus
+              placeholder="you@example.com"
+              aria-label="Email"
+              className={`${field} mt-8`}
+            />
+          ) : (
+            <div className="relative mt-8">
+              <input
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                type={show ? 'text' : 'password'}
+                autoComplete="current-password"
+                autoFocus
+                placeholder="Password"
+                aria-label="Password"
+                className={`${field} pr-12`}
+              />
+              <button
+                type="button"
+                onClick={() => setShow((v) => !v)}
+                aria-label={show ? 'Hide password' : 'Show password'}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-white/40 hover:text-white/80"
+              >
+                {show ? <EyeOff size={17} /> : <Eye size={17} />}
               </button>
-            </li>
-          ))}
-        </ul>
+            </div>
+          )}
+          <p className="mt-2.5 text-[12px] text-white/35">
+            {step === 'email' ? `New to ${brand.display_name}? We’ll set up your account.` : 'New here? Choose a password of 8 or more characters.'}
+          </p>
+
+          {error ? <p className="mt-4 text-[13px] text-zener-danger">{error}</p> : null}
+
+          <button
+            type="submit"
+            disabled={busy || (step === 'email' ? !emailOk : password.length < 8)}
+            className="mt-7 flex h-12 w-full items-center justify-center gap-2 rounded-md bg-zener-gold text-[14px] font-bold text-black transition hover:brightness-110 disabled:opacity-35"
+          >
+            {busy && <Loader2 size={16} className="animate-spin" />}
+            {step === 'email' ? 'Continue' : 'Sign in'}
+          </button>
+
+          <button type="button" onClick={() => setHelp((h) => !h)} className="mt-8 flex items-center gap-1.5 text-[13px] text-white/50 hover:text-white">
+            Trouble signing in? <ChevronDown size={14} className={`transition ${help ? 'rotate-180' : ''}`} />
+          </button>
+          {help ? (
+            <p className="mt-2 text-[13px] leading-6 text-white/45">
+              Forgot your password? Email {brand.support_email ? <a href={`mailto:${brand.support_email}`} className="text-white/80 underline underline-offset-4">{brand.support_email}</a> : 'our support team'} from the address on your account.
+            </p>
+          ) : null}
+        </form>
       </main>
+
+      {/* The same 50 Hz trace as the landing page, along the bottom edge. */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-16 h-28">
+        <SineTrace />
+      </div>
+      <footer className="relative z-10 mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-5 pb-6 text-[12px] text-white/35 sm:px-8">
+        <span>&copy; {new Date().getFullYear()} {brand.display_name}</span>
+        <span className="flex gap-5">
+          <button type="button" onClick={() => nav('/#how')} className="hover:text-white">How it works</button>
+          <button type="button" onClick={() => nav('/#business')} className="hover:text-white">Business</button>
+          <button type="button" onClick={() => nav('/#faq')} className="hover:text-white">Help</button>
+        </span>
+      </footer>
     </div>
   );
 }
