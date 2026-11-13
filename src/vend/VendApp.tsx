@@ -69,11 +69,6 @@ function Split({ aside, children }: { aside: React.ReactNode; children: React.Re
             <AppLogo size={22} />
             <span className="text-[13px] font-black tracking-[0.3em]">{brand.display_name.toUpperCase()}</span>
           </a>
-          {brand.sandbox ? (
-            <span className="rounded-full border border-yellow-400/30 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-yellow-300/90">
-              Test mode
-            </span>
-          ) : null}
         </div>
         <div className="relative mt-8 flex-1 lg:mt-16">{aside}</div>
         <footer className="relative mt-10 hidden items-center justify-between text-xs text-white/35 lg:flex">
@@ -330,7 +325,7 @@ function BuyPage() {
           {paying ? 'Starting secure payment…' : value > 0 ? `Pay ${formatCurrency(value)}` : 'Pay'}
         </button>
         <p className="flex items-center justify-center gap-1.5 text-xs text-white/35">
-          <Lock size={12} /> Card, transfer or USSD, processed securely{brand.sandbox ? ' · test mode' : ''}
+          <Lock size={12} /> Card, transfer or USSD, processed securely
         </p>
       </div>
     </Split>
