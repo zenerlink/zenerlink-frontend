@@ -592,6 +592,16 @@ export function Landing({ nav, signedIn, focus, index = false }: { nav: Nav; sig
   );
 }
 
+// Wires fade out behind the heading and form so the pulses never cross the text.
+const WIRE_MASK = 'radial-gradient(ellipse 34% 60% at 50% 50%, rgba(0,0,0,0.08), #000 100%)';
+const wire = (i: number) => `M-20 ${40 + i * 14} Q 600 ${190 + i * 16} 1220 ${40 + i * 14}`;
+// [wire, seconds per run, start delay]
+const PULSES: [number, number, number][] = [
+  [1, 7, 0],
+  [3, 9, 2.5],
+  [5, 8, 5],
+];
+
 // Email updates, just above the footer. Thin power lines sag across the
 // background, in keeping with the grid drawings elsewhere on the page.
 function UpdatesSignup({ nav }: { nav: Nav }) {
@@ -615,9 +625,26 @@ function UpdatesSignup({ nav }: { nav: Nav }) {
 
   return (
     <section className="relative overflow-hidden border-t border-white/[0.07]">
-      <svg aria-hidden="true" viewBox="0 0 1200 300" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full text-white/[0.06]">
+      <svg aria-hidden="true" viewBox="0 0 1200 300" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full text-white/[0.06]"
+        style={{ maskImage: WIRE_MASK, WebkitMaskImage: WIRE_MASK }}
+      >
         {Array.from({ length: 7 }, (_, i) => (
-          <path key={i} d={`M-20 ${40 + i * 14} Q 600 ${190 + i * 16} 1220 ${40 + i * 14}`} fill="none" stroke="currentColor" strokeWidth="1" />
+          <path key={i} d={wire(i)} fill="none" stroke="currentColor" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+        ))}
+        {/* A few short gold pulses running along the wires. */}
+        {PULSES.map(([line, dur, delay]) => (
+          <path
+            key={line}
+            d={wire(line)}
+            pathLength={100}
+            fill="none"
+            stroke="rgb(var(--zener-gold))"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+            className="wire-pulse"
+            style={{ animationDuration: `${dur}s`, animationDelay: `${delay}s` }}
+          />
         ))}
       </svg>
       <div className="relative mx-auto max-w-xl px-5 py-20 text-center sm:py-24">

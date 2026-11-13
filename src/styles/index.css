@@ -65,3 +65,22 @@ textarea {
   opacity: 1;
   transform: none;
 }
+
+/* Gold pulses running along the sign-up section's wires. */
+.wire-pulse {
+  stroke-dasharray: 5 95;
+  stroke-dashoffset: 100;
+  opacity: 0.8;
+  filter: drop-shadow(0 0 3px rgb(var(--zener-gold) / 0.9));
+  animation: wire-pulse linear infinite;
+}
+@keyframes wire-pulse {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wire-pulse {
+    display: none;
+  }
+}
