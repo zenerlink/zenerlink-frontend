@@ -534,8 +534,21 @@ function BuyPage({ meterId, prefill, payWallet }: { meterId: string | null; pref
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className={`${card} space-y-6 p-5 sm:p-7`}>
           {saved.length ? (
-            <Field label="Saved meters">
-              <div className="flex flex-wrap gap-2">
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-sm font-semibold text-white/70">Saved meters</span>
+                <button type="button" onClick={() => nav('/meters')} className="text-xs font-semibold text-white/40 hover:text-white">
+                  Manage
+                </button>
+              </div>
+              {/* One scrolling row, so many meters never crowd the form. */}
+              <div
+                onWheel={(e) => {
+                  // A mouse wheel scrolls the row sideways.
+                  const el = e.currentTarget;
+                  if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && el.scrollWidth > el.clientWidth) el.scrollLeft += e.deltaY;
+                }}
+                className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5 pb-1 [mask-image:linear-gradient(to_right,#000_85%,transparent)] sm:-mx-7 sm:px-7">
                 {saved.map((m) => {
                   const active = m.meter_number === meterNumber && m.provider_code === provider;
                   return (
@@ -543,17 +556,20 @@ function BuyPage({ meterId, prefill, payWallet }: { meterId: string | null; pref
                       key={m.id}
                       type="button"
                       onClick={() => pickSaved(m)}
-                      className={`rounded-lg border px-3 py-2 text-left text-xs transition ${
+                      className={`flex shrink-0 items-center gap-2.5 rounded-lg border py-2 pl-2 pr-3 text-left text-xs transition ${
                         active ? 'border-zener-gold/60 bg-zener-gold/10' : 'border-white/[0.08] hover:border-white/20'
                       }`}
                     >
-                      <span className={`block font-semibold ${active ? 'text-zener-gold' : 'text-white/80'}`}>{m.customer_name || m.label}</span>
-                      <span className="block text-white/40">{m.meter_number} · {m.provider_code}</span>
+                      <DiscoLogo disco={{ provider_code: m.provider_code, logo_url: '' } as Disco} />
+                      <span className="min-w-0">
+                        <span className={`block max-w-[150px] truncate font-semibold ${active ? 'text-zener-gold' : 'text-white/80'}`}>{m.label || m.customer_name}</span>
+                        <span className="block font-mono text-[11px] text-white/40">{m.meter_number}</span>
+                      </span>
                     </button>
                   );
                 })}
               </div>
-            </Field>
+            </div>
           ) : null}
 
           <div className="grid gap-5 sm:grid-cols-2">
