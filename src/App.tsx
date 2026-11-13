@@ -16,7 +16,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { AppShell, type ZenerPage } from './components/layout/AppShell';
-import { AppLogo, Wordmark } from './components/ui/AppLogo';
+import { AppLogo } from './components/ui/AppLogo';
 import { Button } from './components/ui/Button';
 import { Card } from './components/ui/Card';
 import { ApiError, EMBEDDED, api, koboToNaira, nairaToKobo, setSignedOutHandler } from './lib/api';
@@ -392,9 +392,8 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: User) => void
   return (
     <main className="grid min-h-screen place-items-center px-4 py-10">
       <Card className="w-full max-w-md border-transparent bg-transparent p-6 shadow-none sm:p-8">
-        <h1 className="mt-2">
-          <Wordmark fontSize={30} />
-        </h1>
+        <AppLogo size={44} />
+        <h1 className="mt-6 text-3xl font-black tracking-[0.24em]">{brand.toUpperCase()}</h1>
         <p className="mt-3 text-sm leading-6 text-white/55">Fast electricity management for every meter you own.</p>
         <div className="mt-8 grid grid-cols-2 gap-2">
           {['Login', 'Sign Up'].map((label) => {

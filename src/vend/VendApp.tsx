@@ -22,11 +22,10 @@ import {
   Trash2,
   UserRound,
   Wallet,
-  Zap,
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import logo from '../assets/logo-icon-white.svg';
-import { Wordmark, wordmarkRest } from '../components/ui/AppLogo';
+import { AppLogo } from '../components/ui/AppLogo';
 import { ApiError, IS_PRODUCTION, account, api, guest, koboToNaira, nairaToKobo, setSignedOutHandler } from '../lib/api';
 import type { ApiMeter, Branding, Disco, GuestOrder, PublicMeter, User } from '../lib/api';
 import { BrandContext, fallbackBranding, useBrand } from '../lib/brand';
@@ -179,7 +178,8 @@ function Split({ aside, children }: { aside?: React.ReactNode; children: React.R
       <aside className="relative flex flex-col overflow-hidden border-b border-white/[0.06] px-6 py-6 lg:min-h-screen lg:border-b-0 lg:border-r lg:px-12 lg:py-10">
         <div className="pointer-events-none absolute -left-40 -top-40 h-[28rem] w-[28rem] rounded-full bg-zener-gold/[0.10] blur-3xl" />
         <a href={href('/')} className="relative flex items-center gap-3">
-          <Wordmark fontSize={17} />
+          <AppLogo size={22} />
+          <span className="text-[13px] font-black tracking-[0.3em]">{brand.display_name.toUpperCase()}</span>
         </a>
         <div className="relative mt-8 flex-1 lg:mt-16">{aside}</div>
         <SiteFooter className="relative mt-10 hidden lg:flex" />
@@ -340,8 +340,8 @@ function AuthPage({ onDone, prefill }: { onDone: (u: User) => void; prefill: Pre
 // Signed-in shell: header with wallet, sidebar navigation
 // ---------------------------------------------------------------------------
 
-const NAV: [string, string, typeof Zap][] = [
-  ['/', 'Buy electricity', Zap],
+const NAV: [string, string, (p: { size?: number }) => React.ReactNode][] = [
+  ['/', 'Buy electricity', ZMark],
   ['/transactions', 'Transactions', Receipt],
   ['/meters', 'My meters', Gauge],
   ['/wallet', 'Wallet', Wallet],
@@ -349,6 +349,29 @@ const NAV: [string, string, typeof Zap][] = [
   ['/password', 'Change password', KeyRound],
   ['/help', 'Help', LifeBuoy],
 ];
+
+// The Z logo as a nav icon, tinted with the text colour like the other icons.
+function ZMark({ size = 17 }: { size?: number }) {
+  const img = `url("${logo}")`;
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-block shrink-0 bg-current"
+      style={{
+        width: size,
+        height: size,
+        WebkitMaskImage: img,
+        maskImage: img,
+        WebkitMaskSize: 'contain',
+        maskSize: 'contain',
+        WebkitMaskRepeat: 'no-repeat',
+        maskRepeat: 'no-repeat',
+        WebkitMaskPosition: 'center',
+        maskPosition: 'center',
+      }}
+    />
+  );
+}
 
 const isActive = (path: string, to: string) =>
   to === '/' ? path === '/' || path.startsWith('/buy') || path.startsWith('/order/') : path.startsWith(to);
@@ -382,7 +405,8 @@ function Shell({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-[rgb(var(--zener-background))]/90 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
           <a {...link('/')} className="flex items-center gap-3">
-            <Wordmark fontSize={17} />
+            <AppLogo size={22} />
+            <span className="hidden text-[13px] font-black tracking-[0.3em] sm:inline">{brand.display_name.toUpperCase()}</span>
           </a>
           <div className="flex items-center gap-2 sm:gap-3">
             <a
@@ -1004,7 +1028,7 @@ const loadImage = (src: string) =>
   });
 
 // Draws the printable sticker (900x1200) and returns it as a PNG data URL.
-async function drawSticker(m: ApiMeter, link: string, brandName: string, logoUrl: string, merge: boolean): Promise<string> {
+async function drawSticker(m: ApiMeter, link: string, brandName: string, logoUrl: string): Promise<string> {
   const W = 900;
   const H = 1200;
   const c = document.createElement('canvas');
@@ -1019,29 +1043,19 @@ async function drawSticker(m: ApiMeter, link: string, brandName: string, logoUrl
   g.fillStyle = '#d4943a';
   g.fillRect(0, 170, W, 10);
 
-  // Wordmark, centred: the Zenerlink logo is the Z of "ZNRLINK".
-  const rest = merge ? wordmarkRest(brandName) : null;
-  let logo: HTMLImageElement | null = null;
+  let x = W / 2;
   try {
-    logo = await loadImage(logoUrl);
+    const logo = await loadImage(logoUrl);
+    g.drawImage(logo, 0, 0, logo.width || 64, logo.height || 64, 70, 53, 64, 64);
+    x = 150;
   } catch {
     /* sticker still works without the logo */
   }
-  const markH = rest ? 38 : 60;
-  const markW = logo ? markH * (logo.width / logo.height || 1) : 0;
-  g.font = `900 52px ${font}`;
-  g.textBaseline = 'alphabetic';
-  const text = (rest ?? brandName.toUpperCase()).split('').join(String.fromCharCode(8202, 8202));
-  const gap = logo ? (rest ? 16 : 28) : 0;
-  let x = (W - (markW + gap + g.measureText(text).width)) / 2;
-  if (logo) {
-    g.drawImage(logo, x, 106 - markH, markW, markH);
-    x += markW + gap;
-  }
   g.fillStyle = '#ffffff';
-  g.textAlign = 'left';
-  g.fillText(text, x, 106);
+  g.font = `900 46px ${font}`;
   g.textBaseline = 'middle';
+  g.textAlign = x === W / 2 ? 'center' : 'left';
+  g.fillText(brandName.toUpperCase().split('').join(String.fromCharCode(8202)), x, 87);
 
   g.textAlign = 'center';
   g.fillStyle = '#0b0b0b';
@@ -1072,7 +1086,7 @@ function MeterQrDialog({ meter, onClose }: { meter: ApiMeter; onClose: () => voi
 
   useEffect(() => {
     QRCode.toDataURL(link, { margin: 1, width: 480, errorCorrectionLevel: 'M' }).then(setQr).catch(() => undefined);
-    drawSticker(meter, link, brand.display_name, brand.logo_url || logo, !brand.logo_url).then(setSticker).catch(() => undefined);
+    drawSticker(meter, link, brand.display_name, brand.logo_url || logo).then(setSticker).catch(() => undefined);
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     document.addEventListener('keydown', esc);
     return () => document.removeEventListener('keydown', esc);
