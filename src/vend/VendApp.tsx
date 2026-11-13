@@ -1318,7 +1318,7 @@ function WalletEntries({ entries, nav }: { entries: WalletEntry[]; nav: Nav }) {
 function WalletCard({ name, kobo }: { name: string; kobo: number | null }) {
   const brand = useBrand();
   return (
-    <div className="relative aspect-[1.6] overflow-hidden rounded-2xl border border-zener-gold/25 bg-[linear-gradient(135deg,rgb(var(--zener-gold)/0.22),rgb(var(--zener-gold)/0.04)_60%)] p-5">
+    <div className="relative aspect-[1.6] overflow-hidden rounded-2xl border border-zener-gold/25 bg-[linear-gradient(135deg,rgb(var(--zener-gold)/0.22),rgb(var(--zener-gold)/0.04)_60%)] px-5 pb-8 pt-5">
       <span className="pointer-events-none absolute -bottom-8 -right-6 text-zener-gold/[0.10]">
         <ZMark size={170} />
       </span>
