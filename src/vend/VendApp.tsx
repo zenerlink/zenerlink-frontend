@@ -386,7 +386,7 @@ function OrderPage({ id, orderKey }: { id: string; orderKey: string }) {
           {done && order.token ? (
             <div className="rounded-2xl border border-zener-gold/30 bg-zener-gold/[0.06] p-6 text-center">
               <p className="text-xs font-semibold text-white/45">Electricity token</p>
-              <p className="mt-3 flex flex-wrap justify-center gap-x-3 gap-y-1 font-mono text-[26px] font-bold tracking-wider text-zener-gold sm:text-3xl">
+              <p className="mt-3 flex flex-wrap justify-center gap-x-2.5 gap-y-1 font-mono text-[22px] font-bold tracking-wide text-zener-gold sm:text-[24px]">
                 {tokenGroups(order.token).map((g, i) => <span key={i} className="whitespace-nowrap">{g}</span>)}
               </p>
               <button
