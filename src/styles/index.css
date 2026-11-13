@@ -54,3 +54,14 @@ textarea {
 .seo-static h2 { color: #fff; font-size: 20px; margin: 40px 0 8px; }
 .seo-static a { color: #fff; }
 .seo-static nav a { margin-right: 16px; }
+
+/* Landing sections: a slight fade-up the first time they scroll into view. */
+.reveal {
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 0.8s ease, transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reveal.revealed {
+  opacity: 1;
+  transform: none;
+}

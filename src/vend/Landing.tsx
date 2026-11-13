@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, ChevronDown, Eye, EyeOff, Loader2, Lock, Menu, QrCode, UserRound, X } from 'lucide-react';
 import { ApiError, api, guest } from '../lib/api';
 import type { Disco, User } from '../lib/api';
@@ -320,10 +320,36 @@ function StickerShot() {
 }
 
 
+// Sections after the hero fade up once as they scroll into view.
+function useReveal() {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = ref.current;
+    if (!root || !('IntersectionObserver' in window) || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const els = Array.from(root.querySelectorAll(':scope > section:not(:first-of-type), :scope > footer'));
+    const io = new IntersectionObserver(
+      (entries) =>
+        entries.forEach((e) => {
+          if (!e.isIntersecting) return;
+          e.target.classList.add('revealed');
+          io.unobserve(e.target);
+        }),
+      { rootMargin: '0px 0px -8% 0px' },
+    );
+    els.forEach((el) => {
+      el.classList.add('reveal');
+      io.observe(el);
+    });
+    return () => io.disconnect();
+  }, []);
+  return ref;
+}
+
 export function Landing({ nav, signedIn, focus, index = false }: { nav: Nav; signedIn: boolean; focus?: DiscoSeo; index?: boolean }) {
   const brand = useBrand();
   const discos = useDiscos();
   useHashScroll();
+  const revealRef = useReveal();
   useEffect(() => {
     applyPageSeo(focus ? discoPage(focus) : index ? ELECTRICITY : HOME);
     if (index) window.setTimeout(() => document.getElementById('discos')?.scrollIntoView(), 50);
@@ -332,7 +358,7 @@ export function Landing({ nav, signedIn, focus, index = false }: { nav: Nav; sig
   const year = new Date().getFullYear();
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div ref={revealRef} className="min-h-screen bg-black text-white">
       <TopNav nav={nav} signedIn={signedIn} />
 
       {/* Hero */}
