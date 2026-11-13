@@ -59,6 +59,45 @@ export type WalletEntry = {
   order_id?: string;
   created_at: string;
 };
+export type DeliveryChannel = 'email' | 'sms' | 'whatsapp';
+export type DeliverTo = { email?: boolean; sms?: boolean; whatsapp?: boolean; phone?: string };
+export type SharedToken = {
+  status: 'ready' | 'used' | 'expired' | 'revealed';
+  provider_name: string;
+  meter_number: string;
+  energy_kwh: number;
+  amount_kobo: number;
+  token?: string;
+  expires_at: string;
+};
+export type StatementLine = {
+  id: string;
+  date: string;
+  provider_name: string;
+  meter_number: string;
+  meter_type: string;
+  status: string;
+  paid_with: string;
+  amount_kobo: number;
+  fee_kobo: number;
+  energy_kwh: number;
+  token_last4: string;
+};
+export type Statement = {
+  from: string;
+  to: string;
+  name: string;
+  email: string;
+  purchases: StatementLine[];
+  wallet: WalletEntry[];
+  wallet_opening_kobo: number;
+  wallet_closing_kobo: number;
+  spent_kobo: number;
+  fees_kobo: number;
+  energy_kwh: number;
+  successful_purchases: number;
+};
+
 export type WalletActivity = { entries: WalletEntry[]; months: { month: string; in_kobo: number; out_kobo: number }[] };
 
 export type ApiMeter = {
@@ -242,7 +281,10 @@ export type GuestOrder = {
 };
 
 export const guest = {
-  discos: () => raw<{ discos: Disco[] }>('GET', '/v1/public/discos', undefined, { 'X-Tenant': TENANT }),
+  discos: () => raw<{ discos: Disco[]; delivery_channels?: DeliveryChannel[] }>('GET', '/v1/public/discos', undefined, { 'X-Tenant': TENANT }),
+  tokenShare: (code: string) => raw<SharedToken>('GET', `/v1/public/token-shares/${encodeURIComponent(code)}`, undefined, { 'X-Tenant': TENANT }),
+  revealTokenShare: (code: string) =>
+    raw<SharedToken>('POST', `/v1/public/token-shares/${encodeURIComponent(code)}/reveal`, undefined, { 'X-Tenant': TENANT }),
   subscribe: (email: string) => raw<void>('POST', '/v1/public/subscribe', { email }, { 'X-Tenant': TENANT }),
   verify: (provider_code: string, meter_number: string, meter_type: string) =>
     raw<PublicMeter>('POST', '/v1/public/meters/verify', { provider_code, meter_number, meter_type }, { 'X-Tenant': TENANT }),
@@ -257,8 +299,12 @@ export const nairaToKobo = (n: number) => Math.round(n * 100);
 
 // ---- Account orders (buy page for signed-in customers) ----
 export const account = {
-  order: (input: { provider_code: string; meter_number: string; meter_type: string; amount_kobo: number; payment_method?: 'checkout' | 'wallet' }, idempotencyKey: string) =>
-    request<GuestOrder>('POST', '/v1/orders', input, { 'Idempotency-Key': idempotencyKey }),
+  order: (
+    input: { provider_code: string; meter_number: string; meter_type: string; amount_kobo: number; payment_method?: 'checkout' | 'wallet'; deliver_to?: DeliverTo },
+    idempotencyKey: string,
+  ) => request<GuestOrder>('POST', '/v1/orders', input, { 'Idempotency-Key': idempotencyKey }),
+  share: (id: string) => request<{ code: string; expires_at: string }>('POST', `/v1/orders/${encodeURIComponent(id)}/share`),
+  statement: (from: string, to: string) => request<Statement>('GET', `/v1/statement?from=${from}&to=${to}`),
   orders: (limit = 20) => request<{ orders: GuestOrder[] }>('GET', `/v1/orders?limit=${limit}`),
   get: (id: string) => request<GuestOrder>('GET', `/v1/orders/${encodeURIComponent(id)}`),
   updateProfile: (input: { name?: string; phone?: string }) => request<User>('PATCH', '/v1/me', input),

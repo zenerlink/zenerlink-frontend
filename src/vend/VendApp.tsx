@@ -30,12 +30,13 @@ import { brandedQr, brandedQrUrl } from './qr';
 import { discoLogo } from '../assets/discos';
 import logo from '../assets/logo-icon-white.svg';
 import { ApiError, IS_PRODUCTION, account, api, guest, koboToNaira, nairaToKobo, setSignedOutHandler } from '../lib/api';
-import type { ApiMeter, Branding, Disco, GuestOrder, PublicMeter, User, WalletActivity, WalletEntry } from '../lib/api';
+import type { ApiMeter, Branding, DeliveryChannel, Disco, GuestOrder, PublicMeter, User, WalletActivity, WalletEntry } from '../lib/api';
 import { BrandContext, fallbackBranding, useBrand } from '../lib/brand';
 import { applyBranding } from '../lib/theme';
 import { formatCurrency } from '../lib/format';
 import { Landing, LoginPage } from './Landing';
 import { LegalPage } from './Legal';
+import { ReceiptButton, ShareTokenDialog, StatementDialog, TokenSharePage } from './receipts';
 import { legalByPath } from '../seo/legal';
 import { discoBySlug } from '../seo/site';
 import { buyLink, href, readPrefill } from './links';
@@ -132,6 +133,9 @@ export default function VendRoot() {
     // Public DisCo pages (search landing pages), for everyone.
     const focus = discoBySlug(url.pathname.split('/')[2] ?? '');
     page = <Landing nav={nav} signedIn={!!user} focus={focus} index={!focus} />;
+  } else if (url.pathname.startsWith('/t/')) {
+    // A shared token QR, for anyone (no account needed).
+    page = <TokenSharePage code={url.pathname.slice(3)} />;
   } else if (legalByPath(url.pathname)) {
     page = <LegalPage doc={legalByPath(url.pathname)!} nav={nav} />;
   } else if (checking) {
@@ -148,7 +152,8 @@ export default function VendRoot() {
           nav={nav}
           onDone={(u) => {
             setUser(u);
-            if (url.pathname === '/login') nav('/');
+            // Land on Buy electricity, unless they came from a buy link or a receipt.
+            if (!prefill && !orderMatch) nav('/');
           }}
         />
       );
@@ -337,6 +342,8 @@ function Shell({ children }: { children: React.ReactNode }) {
                   </div>
                   <a {...link('/profile')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Profile</a>
                   <a {...link('/transactions')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Transactions</a>
+                  <a {...link('/password')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Change password</a>
+                  <a {...link('/help')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Help</a>
                   <button
                     type="button"
                     onClick={() => void signOut()}
@@ -349,20 +356,6 @@ function Shell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </div>
-        {/* Mobile: the sidebar becomes a scrollable tab row. */}
-        <nav className="flex gap-1 overflow-x-auto px-4 pb-2 [scrollbar-width:none] lg:hidden">
-          {NAV.slice(0, 4).map(([to, label]) => (
-            <a
-              key={to}
-              {...link(to)}
-              className={`shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-semibold ${
-                isActive(path, to) ? 'bg-zener-gold/15 text-zener-gold' : 'text-white/55 hover:text-white'
-              }`}
-            >
-              {label}
-            </a>
-          ))}
-        </nav>
       </header>
 
       <div className="mx-auto flex w-full max-w-6xl flex-1 gap-10 px-4 py-6 sm:px-6 lg:py-10">
@@ -390,12 +383,41 @@ function Shell({ children }: { children: React.ReactNode }) {
         </aside>
         <main className="min-w-0 flex-1">{children}</main>
       </div>
-      <div className="border-t border-white/[0.06]">
+      <div className="border-t border-white/[0.06] pb-[calc(4.5rem+env(safe-area-inset-bottom))] lg:pb-0">
         <SiteFooter className="mx-auto flex max-w-6xl px-4 py-6 sm:px-6" onHelp={() => nav('/help')} />
       </div>
+
+      {/* Mobile: an app-style bottom bar, Buy first. */}
+      <nav
+        aria-label="Main"
+        className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-white/[0.08] bg-[rgb(var(--zener-background))]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
+      >
+        {MOBILE_NAV.map(([to, label, Icon]) => {
+          const on = isActive(path, to);
+          return (
+            <a
+              key={to}
+              {...link(to)}
+              aria-current={on ? 'page' : undefined}
+              className={`flex h-16 flex-col items-center justify-center gap-1 text-[11px] font-semibold ${on ? 'text-zener-gold' : 'text-white/50'}`}
+            >
+              <Icon size={20} />
+              {label}
+            </a>
+          );
+        })}
+      </nav>
     </div>
   );
 }
+
+const MOBILE_NAV: [string, string, (p: { size?: number }) => React.ReactNode][] = [
+  ['/', 'Buy', ZMark],
+  ['/transactions', 'History', Receipt],
+  ['/meters', 'Meters', Gauge],
+  ['/wallet', 'Wallet', Wallet],
+  ['/profile', 'Account', UserRound],
+];
 
 function PageTitle({ title, sub, action }: { title: string; sub?: string; action?: React.ReactNode }) {
   return (
@@ -418,6 +440,9 @@ const card = 'rounded-2xl border border-white/[0.07] bg-white/[0.02]';
 function BuyPage({ meterId, prefill, payWallet }: { meterId: string | null; prefill: Prefill; payWallet: boolean }) {
   const { user, nav, walletKobo, refreshWallet } = useAcct();
   const [discos, setDiscos] = useState<Disco[]>([]);
+  const [channels, setChannels] = useState<DeliveryChannel[]>([]);
+  const [deliver, setDeliver] = useState<Record<DeliveryChannel, boolean>>({ email: true, sms: false, whatsapp: false });
+  const [deliverPhone, setDeliverPhone] = useState('');
   const [saved, setSaved] = useState<ApiMeter[]>([]);
   const [recent, setRecent] = useState<GuestOrder[]>([]);
   const [provider, setProvider] = useState(prefill?.disco ?? '');
@@ -443,6 +468,7 @@ function BuyPage({ meterId, prefill, payWallet }: { meterId: string | null; pref
       .discos()
       .then((r) => {
         setDiscos(r.discos);
+        setChannels(r.delivery_channels ?? []);
         setProvider(
           (p) => r.discos.find((d) => d.provider_code === p)?.provider_code || r.discos.find((d) => d.provider_code === 'IKEDC')?.provider_code || r.discos[0]?.provider_code || '',
         );
@@ -513,7 +539,19 @@ function BuyPage({ meterId, prefill, payWallet }: { meterId: string | null; pref
     setPaying(true);
     try {
       const o = await account.order(
-        { provider_code: provider, meter_number: meterNumber, meter_type: meterType, amount_kobo: nairaToKobo(value), payment_method: method },
+        {
+          provider_code: provider,
+          meter_number: meterNumber,
+          meter_type: meterType,
+          amount_kobo: nairaToKobo(value),
+          payment_method: method,
+          deliver_to: {
+            email: channels.includes('email') && deliver.email,
+            sms: channels.includes('sms') && deliver.sms,
+            whatsapp: channels.includes('whatsapp') && deliver.whatsapp,
+            phone: deliverPhone || user.phone,
+          },
+        },
         idemKey.current,
       );
       if (o.status === 'payment_pending' && o.checkout_url) {
@@ -532,7 +570,7 @@ function BuyPage({ meterId, prefill, payWallet }: { meterId: string | null; pref
     <>
       <PageTitle title={firstName(user) ? `Hi ${firstName(user)}` : 'Buy electricity'} sub="Recharge any prepaid meter on any DisCo. Your token appears the moment payment is confirmed." />
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <div className={`${card} space-y-6 p-5 sm:p-7`}>
+        <div className={`${card} min-w-0 space-y-6 p-5 sm:p-7`}>
           {saved.length ? (
             <div>
               <div className="mb-2 flex items-center justify-between">
@@ -661,6 +699,38 @@ function BuyPage({ meterId, prefill, payWallet }: { meterId: string | null; pref
             ) : null}
           </Field>
 
+          {channels.length ? (
+            <Field label="Also send my token by">
+              <div className="flex flex-wrap gap-2">
+                {channels.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    aria-pressed={deliver[c]}
+                    onClick={() => setDeliver((d) => ({ ...d, [c]: !d[c] }))}
+                    className={`flex h-10 items-center gap-2 rounded-lg border px-3.5 text-sm font-semibold transition ${
+                      deliver[c] ? 'border-zener-gold/60 bg-zener-gold/10 text-zener-gold' : 'border-white/[0.08] text-white/60 hover:border-white/20 hover:text-white'
+                    }`}
+                  >
+                    {deliver[c] ? <Check size={15} /> : null}
+                    {c === 'email' ? 'Email' : c === 'sms' ? 'SMS' : 'WhatsApp'}
+                  </button>
+                ))}
+              </div>
+              {(deliver.sms && channels.includes('sms')) || (deliver.whatsapp && channels.includes('whatsapp')) ? (
+                <input
+                  value={deliverPhone || user.phone}
+                  onChange={(e) => setDeliverPhone(e.target.value)}
+                  inputMode="tel"
+                  autoComplete="tel"
+                  placeholder="Phone number, e.g. 0803 123 4567"
+                  className={`${inputCls} mt-2.5`}
+                />
+              ) : null}
+              {deliver.email && channels.includes('email') ? <p className="mt-2 text-xs text-white/40">Email goes to {user.email}</p> : null}
+            </Field>
+          ) : null}
+
           {error ? <p className="rounded-lg bg-zener-danger/10 px-3.5 py-2.5 text-sm text-zener-danger">{error}</p> : null}
 
           <button
@@ -755,6 +825,8 @@ const STATUS: Record<string, [string, string]> = {
 };
 const statusOf = (s: string): [string, string] => STATUS[s] ?? ['Processing', 'bg-zener-gold/10 text-zener-gold'];
 
+const rowBtn = 'grid h-8 w-8 place-items-center rounded-lg border border-white/[0.08] text-xs font-bold text-white/75 hover:border-white/25 hover:text-white disabled:opacity-50';
+
 function StatusPill({ status }: { status: string }) {
   const [label, cls] = statusOf(status);
   return <span className={`inline-block rounded-full px-2.5 py-0.5 text-[11px] font-bold ${cls}`}>{label}</span>;
@@ -775,9 +847,23 @@ function useOrders(limit: number) {
 function TransactionsPage() {
   const { nav } = useAcct();
   const { orders, error } = useOrders(100);
+  const [statement, setStatement] = useState(false);
+  const [sharing, setSharing] = useState<GuestOrder | null>(null);
+  const closeStatement = useCallback(() => setStatement(false), []);
+  const closeShare = useCallback(() => setSharing(null), []);
   return (
     <>
-      <PageTitle title="Transactions" sub="Every electricity purchase on your account." />
+      <PageTitle
+        title="Transactions"
+        sub="Every electricity purchase on your account."
+        action={
+          <button type="button" onClick={() => setStatement(true)} className="flex h-10 items-center gap-2 rounded-lg border border-white/[0.1] px-4 text-sm font-bold hover:border-white/25">
+            <Receipt size={16} /> Statement
+          </button>
+        }
+      />
+      {statement ? <StatementDialog onClose={closeStatement} /> : null}
+      {sharing ? <ShareTokenDialog order={sharing} onClose={closeShare} /> : null}
       {error ? <ErrorBox text={error} /> : orders === null ? <Spinner /> : orders.length === 0 ? (
         <Empty text="No purchases yet." action="Buy electricity" onAction={() => nav('/')} />
       ) : (
@@ -791,6 +877,7 @@ function TransactionsPage() {
                 <th className="px-5 py-3.5 text-right font-semibold">Amount</th>
                 <th className="px-5 py-3.5 text-right font-semibold">Units</th>
                 <th className="px-5 py-3.5 font-semibold">Status</th>
+                <th className="px-5 py-3.5"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/[0.05]">
@@ -802,6 +889,18 @@ function TransactionsPage() {
                   <td className="whitespace-nowrap px-5 py-4 text-right font-bold">{naira(o.amount_kobo)}</td>
                   <td className="whitespace-nowrap px-5 py-4 text-right text-white/60">{o.energy_kwh ? `${o.energy_kwh.toFixed(1)} kWh` : '—'}</td>
                   <td className="px-5 py-4"><StatusPill status={o.status} /></td>
+                  <td className="px-5 py-4" onClick={(e) => e.stopPropagation()}>
+                    {o.status === 'vended' || o.status === 'delivered' ? (
+                      <span className="flex justify-end gap-1.5">
+                        <ReceiptButton order={o} className={rowBtn} compact />
+                        {o.token ? (
+                          <button type="button" onClick={() => setSharing(o)} className={rowBtn} title="Share token as a one-time QR" aria-label="Share token as a one-time QR">
+                            <QrCode size={15} />
+                          </button>
+                        ) : null}
+                      </span>
+                    ) : null}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1476,7 +1575,8 @@ function ProfilePage() {
   return (
     <>
       <PageTitle title="Profile" sub="Your details for receipts and DisCo purchases." />
-      <form onSubmit={(e) => void save(e)} className={`${card} max-w-xl space-y-5 p-6`}>
+      <div className="grid max-w-5xl gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <form onSubmit={(e) => void save(e)} className={`${card} space-y-5 p-6`}>
         <div className="flex items-center gap-4 pb-2">
           <span className="grid h-14 w-14 place-items-center rounded-full bg-zener-gold/15 text-lg font-bold text-zener-gold">{initials(user)}</span>
           <div className="min-w-0">
@@ -1501,7 +1601,49 @@ function ProfilePage() {
           {done ? <span className="text-sm text-zener-success">Saved.</span> : null}
         </div>
       </form>
+      <LinkedMeters />
+      </div>
     </>
+  );
+}
+
+// The meters on this account, on the profile page.
+function LinkedMeters() {
+  const { nav } = useAcct();
+  const [meters, setMeters] = useState<ApiMeter[] | null>(null);
+  useEffect(() => {
+    api
+      .meters()
+      .then((r) => setMeters(r.meters.filter((m) => m.provider_code !== 'ZIEON')))
+      .catch(() => setMeters([]));
+  }, []);
+  return (
+    <section className={`${card} self-start p-6`}>
+      <div className="flex items-center justify-between">
+        <h2 className="text-base font-bold">Linked meters{meters?.length ? <span className="ml-2 text-sm font-semibold text-white/40">{meters.length}</span> : null}</h2>
+        <button type="button" onClick={() => nav('/meters')} className="text-xs font-semibold text-white/45 hover:text-white">Manage</button>
+      </div>
+      {meters === null ? (
+        <Spinner />
+      ) : meters.length === 0 ? (
+        <p className="mt-4 text-sm text-white/45">No meters yet. Buy for a meter and it is linked to your account.</p>
+      ) : (
+        <ul className="mt-3 divide-y divide-white/[0.06]">
+          {meters.map((m) => (
+            <li key={m.id} className="flex items-center gap-3 py-3">
+              <DiscoLogo disco={{ provider_code: m.provider_code, logo_url: '' } as Disco} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-mono text-sm font-semibold">{m.meter_number}</span>
+                <span className="block truncate text-xs text-white/40">{m.label || m.customer_name} · {m.provider_name || m.provider_code} · {m.meter_type}</span>
+              </span>
+              <button type="button" onClick={() => nav(`/?meter_id=${m.id}`)} className="h-8 rounded-lg border border-white/[0.1] px-3 text-xs font-bold hover:border-zener-gold/50 hover:text-zener-gold">
+                Buy
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -1626,7 +1768,7 @@ function OrderPage({ id }: { id: string }) {
   const { nav, refreshWallet } = useAcct();
   return (
     <div className="max-w-xl">
-      <OrderView load={() => account.get(id)} onFinal={refreshWallet} />
+      <OrderView load={() => account.get(id)} onFinal={refreshWallet} canShare />
       <div className="mt-6 grid gap-3 sm:grid-cols-2">
         <button type="button" onClick={() => nav('/')} className="flex h-12 items-center justify-center rounded-xl bg-zener-gold text-sm font-bold text-black hover:brightness-110">
           Buy again
@@ -1639,8 +1781,9 @@ function OrderPage({ id }: { id: string }) {
   );
 }
 
-function OrderView({ load, onFinal }: { load: () => Promise<GuestOrder>; onFinal?: () => void }) {
+function OrderView({ load, onFinal, canShare = false }: { load: () => Promise<GuestOrder>; onFinal?: () => void; canShare?: boolean }) {
   const [order, setOrder] = useState<GuestOrder | null>(null);
+  const [sharing, setSharing] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const loadRef = useRef(load);
@@ -1722,10 +1865,24 @@ function OrderView({ load, onFinal }: { load: () => Promise<GuestOrder>; onFinal
           <SummaryRow label="Amount paid" value={naira(order.amount_kobo)} strong />
         </div>
       </dl>
+      {done ? (
+        <div className="grid grid-cols-2 gap-2">
+          <ReceiptButton order={order} className={actionBtn} />
+          {canShare && order.token ? (
+            <button type="button" onClick={() => setSharing(true)} className={actionBtn}>
+              <QrCode size={15} /> Share as QR
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {sharing ? <ShareTokenDialog order={order} onClose={() => setSharing(false)} /> : null}
       {order.sandbox ? <p className="text-center text-xs text-yellow-300/80">Test mode: this token is not valid on a real meter.</p> : null}
     </div>
   );
 }
+
+const actionBtn =
+  'flex h-11 items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] text-sm font-bold hover:border-white/20 disabled:opacity-50';
 
 // ---------------------------------------------------------------------------
 // Primitives

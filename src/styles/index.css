@@ -87,3 +87,10 @@ textarea {
 
 .no-scrollbar { scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* Never let a stray element scroll the page sideways on phones. "clip" (not
+   "hidden") keeps position: sticky working. */
+html,
+body {
+  overflow-x: clip;
+}
