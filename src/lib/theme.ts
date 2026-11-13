@@ -29,5 +29,7 @@ export function applyBranding(b: Branding) {
     if (rgb) root.style.setProperty(cssVar, rgb);
   }
   if (b.theme.primary) root.style.setProperty('--zener-gold-hex', b.theme.primary);
-  document.title = b.display_name;
+  // Keep page titles (they carry search keywords); only a white-label brand
+  // whose name is not already in the title gets it set.
+  if (!document.title.includes(b.display_name)) document.title = b.display_name;
 }
