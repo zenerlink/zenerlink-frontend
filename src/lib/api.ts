@@ -217,6 +217,9 @@ const idem = () => ({ 'Idempotency-Key': crypto.randomUUID() });
 export const api = {
   branding: () => raw<Branding>('GET', `/v1/branding?tenant=${encodeURIComponent(TENANT)}`),
   login: async (email: string, password: string) => adopt(await raw<Session>('POST', '/v1/auth/login', { email, password }, { 'X-Tenant': TENANT })),
+  forgotPassword: (email: string) => raw<{ ok: boolean }>('POST', '/v1/auth/forgot-password', { email }, { 'X-Tenant': TENANT }),
+  resetPassword: (code: string, password: string) =>
+    raw<{ ok: boolean }>('POST', '/v1/auth/reset-password', { code, password }, { 'X-Tenant': TENANT }),
   register: async (email: string, phone: string, name: string, password: string) =>
     adopt(await raw<Session>('POST', '/v1/auth/register', { email, phone, name, password }, { 'X-Tenant': TENANT })),
   exchangeEmbedCode: async (code: string) => adopt(await raw<Session>('POST', '/v1/embed/exchange', { code })),

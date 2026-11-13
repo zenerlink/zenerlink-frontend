@@ -34,7 +34,7 @@ import type { ApiMeter, Branding, DeliveryChannel, Disco, GuestOrder, PublicMete
 import { BrandContext, fallbackBranding, useBrand } from '../lib/brand';
 import { applyBranding } from '../lib/theme';
 import { formatCurrency } from '../lib/format';
-import { Landing, LoginPage } from './Landing';
+import { Landing, LoginPage, ResetPasswordPage } from './Landing';
 import { LegalPage } from './Legal';
 import { ReceiptButton, ShareTokenDialog, StatementDialog, TokenSharePage } from './receipts';
 import { legalByPath } from '../seo/legal';
@@ -136,6 +136,9 @@ export default function VendRoot() {
   } else if (url.pathname.startsWith('/t/')) {
     // A shared token QR, for anyone (no account needed).
     page = <TokenSharePage code={url.pathname.slice(3)} />;
+  } else if (url.pathname === '/reset-password') {
+    // Opened from the reset email; works signed in or out.
+    page = <ResetPasswordPage code={url.searchParams.get('code') ?? ''} nav={nav} />;
   } else if (legalByPath(url.pathname)) {
     page = <LegalPage doc={legalByPath(url.pathname)!} nav={nav} />;
   } else if (checking) {

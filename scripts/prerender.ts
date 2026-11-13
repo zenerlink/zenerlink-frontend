@@ -130,6 +130,6 @@ writeFileSync(
 );
 writeFileSync(
   join(DIST, 'robots.txt'),
-  `User-agent: *\nAllow: /\nDisallow: /order/\nDisallow: /buy\nDisallow: /transactions\nDisallow: /meters\nDisallow: /wallet\nDisallow: /profile\nDisallow: /password\nDisallow: /help\n\nSitemap: ${url('/sitemap.xml')}\n`,
+  `User-agent: *\nAllow: /\nDisallow: /order/\nDisallow: /buy\nDisallow: /transactions\nDisallow: /meters\nDisallow: /wallet\nDisallow: /profile\nDisallow: /password\nDisallow: /reset-password\nDisallow: /help\n\nSitemap: ${url('/sitemap.xml')}\n`,
 );
 console.log(`prerendered ${pages.length} pages, sitemap.xml and robots.txt`);

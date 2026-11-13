@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, ChevronDown, Eye, EyeOff, Loader2, Lock, Menu, QrCode, UserRound, X } from 'lucide-react';
+import { ArrowRight, Check, ChevronDown, Eye, EyeOff, Loader2, Lock, Mail, Menu, QrCode, UserRound, X } from 'lucide-react';
 import { ApiError, api, guest } from '../lib/api';
 import type { Disco, User } from '../lib/api';
 import { useBrand } from '../lib/brand';
@@ -717,6 +717,22 @@ export function LoginPage({ onDone, prefill, nav }: { onDone: (u: User) => void;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [help, setHelp] = useState(false);
+  const [sent, setSent] = useState('');
+  const [sending, setSending] = useState(false);
+
+  const forgot = async () => {
+    if (!emailOk) return setError('Enter your email first, then tap Forgot password.');
+    setError('');
+    setSending(true);
+    try {
+      await api.forgotPassword(email.trim());
+      setSent(email.trim());
+    } catch (err) {
+      setError(message(err));
+    } finally {
+      setSending(false);
+    }
+  };
   const emailOk = /^\S+@\S+\.\S+$/.test(email.trim());
 
   const submit = async (e: React.FormEvent) => {
@@ -750,26 +766,24 @@ export function LoginPage({ onDone, prefill, nav }: { onDone: (u: User) => void;
     ['password', 'Password'],
   ];
 
+  if (sent) {
+    return (
+      <AuthLayout nav={nav}>
+        <ResetSent
+          email={sent}
+          onBack={() => {
+            setSent('');
+            setStep('password');
+          }}
+          onResend={() => void forgot()}
+          busy={sending}
+        />
+      </AuthLayout>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-black text-white lg:grid lg:grid-cols-[1fr_minmax(480px,0.9fr)]">
-      {/* Photo side: the grid at sunset, our own image and colour. */}
-      <aside className="relative h-48 overflow-hidden sm:h-64 lg:sticky lg:top-0 lg:h-screen">
-        <img src={pylonsPhoto} alt="" className="absolute inset-0 h-full w-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/30" />
-        <div className="absolute inset-x-0 bottom-0 hidden p-12 lg:block">
-          <p className="max-w-sm text-[30px] font-bold leading-[1.12] tracking-tight">Every DisCo. One account. Tokens in seconds.</p>
-        </div>
-      </aside>
-
-      <div className="relative flex min-h-[calc(100vh-12rem)] flex-col sm:min-h-[calc(100vh-16rem)] lg:min-h-screen">
-      <header className="flex h-[72px] w-full items-center justify-between px-5 sm:px-10">
-        <Wordmark onClick={() => nav('/')} />
-        <button type="button" onClick={() => nav('/')} className="text-[13px] text-white/50 hover:text-white">
-          Back to site
-        </button>
-      </header>
-
-      <main className="flex flex-1 items-center justify-center px-5 py-10 sm:px-10">
+    <AuthLayout nav={nav}>
         <form onSubmit={(e) => void submit(e)} noValidate className="w-full max-w-[380px]">
           <ol className="flex gap-6 font-mono text-[11px] uppercase tracking-[0.18em]">
             {steps.map(([k, label], i) => (
@@ -838,9 +852,16 @@ export function LoginPage({ onDone, prefill, nav }: { onDone: (u: User) => void;
               </button>
             </div>
           )}
-          <p className="mt-2.5 text-[12px] text-white/35">
-            {step === 'email' ? `New to ${brand.display_name}? We’ll set up your account.` : 'New here? Choose a password of 8 or more characters.'}
-          </p>
+          {step === 'email' ? (
+            <p className="mt-2.5 text-[12px] text-white/35">New to {brand.display_name}? We’ll set up your account.</p>
+          ) : (
+            <div className="mt-2.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[12px]">
+              <span className="text-white/35">New here? Choose 8 or more characters.</span>
+              <button type="button" onClick={() => void forgot()} disabled={sending} className="font-semibold text-zener-gold hover:underline disabled:opacity-50">
+                {sending ? 'Sending…' : 'Forgot password?'}
+              </button>
+            </div>
+          )}
 
           {error ? <p className="mt-4 text-[13px] text-zener-danger">{error}</p> : null}
 
@@ -858,10 +879,183 @@ export function LoginPage({ onDone, prefill, nav }: { onDone: (u: User) => void;
           </button>
           {help ? (
             <p className="mt-2 text-[13px] leading-6 text-white/45">
-              Forgot your password? Email {brand.support_email ? <a href={`mailto:${brand.support_email}`} className="text-white/80 underline underline-offset-4">{brand.support_email}</a> : 'our support team'} from the address on your account.
+              Forgot your password?{' '}
+              <button type="button" onClick={() => void forgot()} className="text-white/80 underline underline-offset-4 hover:text-white">Email me a reset link</button>.
+              Still stuck? Email {brand.support_email ? <a href={`mailto:${brand.support_email}`} className="text-white/80 underline underline-offset-4">{brand.support_email}</a> : 'our support team'} from the address on your account.
             </p>
           ) : null}
         </form>
+    </AuthLayout>
+  );
+}
+
+function ResetSent({ email, onBack, onResend, busy }: { email: string; onBack: () => void; onResend: () => void; busy: boolean }) {
+  return (
+    <div className="w-full max-w-[380px]">
+      <span className="grid h-12 w-12 place-items-center rounded-full bg-zener-gold/15 text-zener-gold">
+        <Mail size={22} />
+      </span>
+      <h1 className="mt-6 text-[32px] font-bold leading-tight tracking-tight">Check your email</h1>
+      <p className="mt-3 text-[14px] leading-6 text-white/55">
+        If <span className="break-all text-white">{email}</span> has an account, we’ve sent it a link to set a new password. The link works once and
+        expires in 30 minutes.
+      </p>
+      <p className="mt-4 text-[13px] leading-6 text-white/40">Not there after a minute? Check your spam folder.</p>
+      <button
+        type="button"
+        onClick={onBack}
+        className="mt-8 flex h-12 w-full items-center justify-center rounded-md bg-zener-gold text-[14px] font-bold text-black transition hover:brightness-110"
+      >
+        Back to sign in
+      </button>
+      <button type="button" onClick={onResend} disabled={busy} className="mt-4 w-full text-center text-[13px] text-white/50 hover:text-white disabled:opacity-50">
+        {busy ? 'Sending…' : 'Send the link again'}
+      </button>
+    </div>
+  );
+}
+
+// Opened from the reset email: choose a new password.
+export function ResetPasswordPage({ code, nav }: { code: string; nav: Nav }) {
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [show, setShow] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [done, setDone] = useState(false);
+  useEffect(() => {
+    document.title = 'Reset password';
+    // Keep the code out of the address bar, history and any referrer.
+    window.history.replaceState(null, '', window.location.pathname);
+  }, []);
+
+  const field =
+    'h-12 w-full rounded-md border border-white/15 bg-white/[0.03] px-4 text-[15px] text-white outline-none transition placeholder:text-white/30 focus:border-zener-gold/70';
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (password.length < 8) return setError('Use at least 8 characters.');
+    if (password !== confirm) return setError('The two passwords don’t match.');
+    setBusy(true);
+    try {
+      await api.resetPassword(code, password);
+      setDone(true);
+    } catch (err) {
+      setError(message(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <AuthLayout nav={nav}>
+      {done ? (
+        <div className="w-full max-w-[380px]">
+          <span className="grid h-12 w-12 place-items-center rounded-full bg-zener-success/15 text-zener-success">
+            <Check size={22} />
+          </span>
+          <h1 className="mt-6 text-[32px] font-bold leading-tight tracking-tight">Password changed</h1>
+          <p className="mt-3 text-[14px] leading-6 text-white/55">Sign in with your new password. For your safety, we’ve signed you out on every other device.</p>
+          <button
+            type="button"
+            onClick={() => nav('/login')}
+            className="mt-8 flex h-12 w-full items-center justify-center rounded-md bg-zener-gold text-[14px] font-bold text-black transition hover:brightness-110"
+          >
+            Sign in
+          </button>
+        </div>
+      ) : !code ? (
+        <div className="w-full max-w-[380px]">
+          <h1 className="text-[32px] font-bold leading-tight tracking-tight">This link isn’t complete</h1>
+          <p className="mt-3 text-[14px] leading-6 text-white/55">Open the link from your email again, or ask for a new one from the sign-in page.</p>
+          <button type="button" onClick={() => nav('/login')} className="mt-8 flex h-12 w-full items-center justify-center rounded-md bg-zener-gold text-[14px] font-bold text-black">
+            Go to sign in
+          </button>
+        </div>
+      ) : (
+        <form onSubmit={(e) => void submit(e)} noValidate className="w-full max-w-[380px]">
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-zener-gold">Password reset</p>
+          <h1 className="mt-5 text-[32px] font-bold leading-tight tracking-tight">Choose a new password</h1>
+          <p className="mt-2 text-[14px] leading-6 text-white/50">8 or more characters. You’ll use it to sign in from now on.</p>
+          <div className="relative mt-8">
+            <input
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              type={show ? 'text' : 'password'}
+              autoComplete="new-password"
+              autoFocus
+              placeholder="New password"
+              aria-label="New password"
+              className={`${field} pr-12`}
+            />
+            <button
+              type="button"
+              onClick={() => setShow((v) => !v)}
+              aria-label={show ? 'Hide password' : 'Show password'}
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-white/40 hover:text-white/80"
+            >
+              {show ? <EyeOff size={17} /> : <Eye size={17} />}
+            </button>
+          </div>
+          <input
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            type={show ? 'text' : 'password'}
+            autoComplete="new-password"
+            placeholder="Type it again"
+            aria-label="Confirm new password"
+            className={`${field} mt-3`}
+          />
+          {error ? (
+            <p className="mt-4 text-[13px] text-zener-danger">
+              {error}
+              {/expired|invalid/i.test(error) ? (
+                <>
+                  {' '}
+                  <button type="button" onClick={() => nav('/login')} className="underline underline-offset-4">Get a new link</button>
+                </>
+              ) : null}
+            </p>
+          ) : null}
+          <button
+            type="submit"
+            disabled={busy || password.length < 8 || !confirm}
+            className="mt-7 flex h-12 w-full items-center justify-center gap-2 rounded-md bg-zener-gold text-[14px] font-bold text-black transition hover:brightness-110 disabled:opacity-35"
+          >
+            {busy && <Loader2 size={16} className="animate-spin" />}
+            Save new password
+          </button>
+        </form>
+      )}
+    </AuthLayout>
+  );
+}
+
+// The sign-in layout: grid photo on one side, the form on the other.
+function AuthLayout({ nav, children }: { nav: Nav; children: React.ReactNode }) {
+  const brand = useBrand();
+  return (
+    <div className="min-h-screen bg-black text-white lg:grid lg:grid-cols-[1fr_minmax(480px,0.9fr)]">
+      {/* Photo side: the grid at sunset, our own image and colour. */}
+      <aside className="relative h-48 overflow-hidden sm:h-64 lg:sticky lg:top-0 lg:h-screen">
+        <img src={pylonsPhoto} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/30" />
+        <div className="absolute inset-x-0 bottom-0 hidden p-12 lg:block">
+          <p className="max-w-sm text-[30px] font-bold leading-[1.12] tracking-tight">Every DisCo. One account. Tokens in seconds.</p>
+        </div>
+      </aside>
+
+      <div className="relative flex min-h-[calc(100vh-12rem)] flex-col sm:min-h-[calc(100vh-16rem)] lg:min-h-screen">
+      <header className="flex h-[72px] w-full items-center justify-between px-5 sm:px-10">
+        <Wordmark onClick={() => nav('/')} />
+        <button type="button" onClick={() => nav('/')} className="text-[13px] text-white/50 hover:text-white">
+          Back to site
+        </button>
+      </header>
+
+      <main className="flex flex-1 items-center justify-center px-5 py-10 sm:px-10">
+{children}
       </main>
 
       <footer className="flex w-full flex-wrap items-center justify-between gap-3 px-5 pb-6 text-[12px] text-white/35 sm:px-10">
