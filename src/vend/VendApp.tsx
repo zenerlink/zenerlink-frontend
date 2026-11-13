@@ -443,6 +443,8 @@ function BuyPage({ meterId, prefill, payWallet }: { meterId: string | null; pref
   const [channels, setChannels] = useState<DeliveryChannel[]>([]);
   const [deliver, setDeliver] = useState<Record<DeliveryChannel, boolean>>({ email: true, sms: false, whatsapp: false });
   const [deliverPhone, setDeliverPhone] = useState('');
+  // Email always goes out; only SMS and WhatsApp are opt-in.
+  const extraChannels = channels.filter((c) => c !== 'email');
   const [saved, setSaved] = useState<ApiMeter[]>([]);
   const [recent, setRecent] = useState<GuestOrder[]>([]);
   const [provider, setProvider] = useState(prefill?.disco ?? '');
@@ -546,7 +548,7 @@ function BuyPage({ meterId, prefill, payWallet }: { meterId: string | null; pref
           amount_kobo: nairaToKobo(value),
           payment_method: method,
           deliver_to: {
-            email: channels.includes('email') && deliver.email,
+            email: channels.includes('email'),
             sms: channels.includes('sms') && deliver.sms,
             whatsapp: channels.includes('whatsapp') && deliver.whatsapp,
             phone: deliverPhone || user.phone,
@@ -699,10 +701,17 @@ function BuyPage({ meterId, prefill, payWallet }: { meterId: string | null; pref
             ) : null}
           </Field>
 
-          {channels.length ? (
+          {channels.includes('email') ? (
+            <p className="flex items-center gap-2 text-xs text-white/45">
+              <Check size={14} className="shrink-0 text-zener-gold" />
+              <span className="min-w-0 break-words">Your token and receipt will also be emailed to {user.email}</span>
+            </p>
+          ) : null}
+
+          {extraChannels.length ? (
             <Field label="Also send my token by">
               <div className="flex flex-wrap gap-2">
-                {channels.map((c) => (
+                {extraChannels.map((c) => (
                   <button
                     key={c}
                     type="button"
@@ -713,7 +722,7 @@ function BuyPage({ meterId, prefill, payWallet }: { meterId: string | null; pref
                     }`}
                   >
                     {deliver[c] ? <Check size={15} /> : null}
-                    {c === 'email' ? 'Email' : c === 'sms' ? 'SMS' : 'WhatsApp'}
+                    {c === 'sms' ? 'SMS' : 'WhatsApp'}
                   </button>
                 ))}
               </div>
@@ -727,7 +736,6 @@ function BuyPage({ meterId, prefill, payWallet }: { meterId: string | null; pref
                   className={`${inputCls} mt-2.5`}
                 />
               ) : null}
-              {deliver.email && channels.includes('email') ? <p className="mt-2 text-xs text-white/40">Email goes to {user.email}</p> : null}
             </Field>
           ) : null}
 
