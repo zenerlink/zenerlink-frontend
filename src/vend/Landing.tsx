@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowRight, Check, ChevronDown, ChevronRight, Eye, EyeOff, Loader2, Lock, Menu, QrCode, UserRound, Wallet, X } from 'lucide-react';
+import { ArrowRight, ChevronDown, ChevronRight, Eye, EyeOff, Loader2, Lock, Menu, QrCode, UserRound, X } from 'lucide-react';
 import QRCode from 'qrcode';
 import { ApiError, api, guest } from '../lib/api';
 import type { Disco, User } from '../lib/api';
@@ -7,9 +7,11 @@ import { useBrand } from '../lib/brand';
 import { href } from './links';
 import type { Nav, Prefill } from './links';
 
-// The public site (zenerlink.com): a product landing page in the spirit of a
-// hardware brand's site, full-bleed dark panels, one clear action per panel,
-// and an account button that goes straight to sign-in.
+// The public site (zenerlink.com). Quiet and technical: black, white type,
+// thin line drawings of the grid, gold only where electricity flows. Photo
+// slots (HERO_PHOTO, PANEL_PHOTOS) take real photography when we have it.
+
+const HERO_PHOTO = ''; // e.g. '/images/hero.jpg'
 
 const SECTIONS: [string, string][] = [
   ['#buy', 'Buy electricity'],
@@ -46,100 +48,173 @@ function Wordmark({ onClick }: { onClick: () => void }) {
         e.preventDefault();
         onClick();
       }}
-      className="text-[17px] font-black tracking-[0.32em] text-white"
+      className="text-[16px] font-black tracking-[0.34em] text-white"
     >
       {brand.display_name.toUpperCase()}
     </a>
   );
 }
 
-function AccountButton({ nav, signedIn }: { nav: Nav; signedIn: boolean }) {
-  return (
-    <button
-      type="button"
-      onClick={() => nav(signedIn ? '/' : '/login')}
-      aria-label={signedIn ? 'Your account' : 'Sign in'}
-      title={signedIn ? 'Your account' : 'Sign in'}
-      className="grid h-10 w-10 place-items-center rounded-full bg-white/[0.1] text-white/85 transition hover:bg-white/[0.18] hover:text-white"
-    >
-      <UserRound size={19} strokeWidth={1.6} />
-    </button>
-  );
-}
-
 function TopNav({ nav, signedIn }: { nav: Nav; signedIn: boolean }) {
   const brand = useBrand();
   const [open, setOpen] = useState(false);
-  const [solid, setSolid] = useState(false);
-  useEffect(() => {
-    const onScroll = () => setSolid(window.scrollY > 40);
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
+  const account = () => nav(signedIn ? '/' : '/login');
 
   return (
-    <header className={`fixed inset-x-0 top-0 z-40 transition-colors ${solid || open ? 'bg-black/85 backdrop-blur-md' : 'bg-transparent'}`}>
-      <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between gap-6 px-5 sm:px-8">
-        <div className="flex items-center gap-10">
-          <Wordmark onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} />
-          <nav className="hidden items-center gap-1 lg:flex">
+    <header className="fixed inset-x-0 top-0 z-40 px-3 pt-3 sm:px-6 sm:pt-4">
+      <div className="mx-auto max-w-6xl rounded-xl border border-white/[0.08] bg-[#0d0d0d]/70 backdrop-blur-xl">
+        <div className="flex h-14 items-center justify-between gap-6 pl-5 pr-2 sm:h-16 sm:pl-6">
+          <div className="flex items-center gap-9">
+            <Wordmark onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} />
+            <nav className="hidden items-center gap-0.5 lg:flex">
+              {SECTIONS.map(([to, label]) => (
+                <a key={to} href={to} className="rounded-md px-3 py-2 text-[14px] font-medium text-white/70 transition hover:text-white">
+                  {label}
+                </a>
+              ))}
+            </nav>
+          </div>
+          <div className="flex items-center gap-2">
+            {brand.support_phone ? (
+              <a href={`tel:${brand.support_phone}`} className="mr-2 hidden text-[13px] text-white/55 hover:text-white md:inline">
+                Call {brand.support_phone}
+              </a>
+            ) : null}
+            <button
+              type="button"
+              onClick={account}
+              aria-label={signedIn ? 'Your account' : 'Sign in'}
+              title={signedIn ? 'Your account' : 'Sign in'}
+              className="grid h-10 w-10 place-items-center rounded-full bg-white/[0.08] text-white/80 transition hover:bg-white/[0.16] hover:text-white"
+            >
+              <UserRound size={18} strokeWidth={1.6} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setOpen((o) => !o)}
+              aria-label="Menu"
+              className="grid h-10 w-10 place-items-center rounded-full bg-white/[0.08] text-white/80 lg:hidden"
+            >
+              {open ? <X size={18} /> : <Menu size={18} />}
+            </button>
+          </div>
+        </div>
+        {open ? (
+          <nav className="border-t border-white/[0.08] px-5 pb-5 lg:hidden">
             {SECTIONS.map(([to, label]) => (
-              <a key={to} href={to} className="rounded-md px-3 py-2 text-[14px] font-semibold text-white/80 transition hover:bg-white/[0.08] hover:text-white">
+              <a key={to} href={to} onClick={() => setOpen(false)} className="block border-b border-white/[0.06] py-4 text-[16px] font-medium text-white/80">
                 {label}
               </a>
             ))}
+            <button type="button" onClick={account} className="mt-5 h-12 w-full rounded-md bg-white text-sm font-bold text-black">
+              {signedIn ? 'Go to my account' : 'Sign in'}
+            </button>
           </nav>
-        </div>
-        <div className="flex items-center gap-3">
-          {brand.support_phone ? (
-            <a href={`tel:${brand.support_phone}`} className="hidden text-[13px] text-white/60 hover:text-white md:inline">
-              Call <span className="font-semibold text-white/85 underline underline-offset-4">{brand.support_phone}</span>
-            </a>
-          ) : null}
-          <AccountButton nav={nav} signedIn={signedIn} />
-          <button
-            type="button"
-            onClick={() => setOpen((o) => !o)}
-            aria-label="Menu"
-            className="grid h-10 w-10 place-items-center rounded-full bg-white/[0.1] text-white/85 lg:hidden"
-          >
-            {open ? <X size={19} /> : <Menu size={19} />}
-          </button>
-        </div>
+        ) : null}
       </div>
-      {open ? (
-        <nav className="border-t border-white/[0.08] px-5 pb-6 pt-2 lg:hidden">
-          {SECTIONS.map(([to, label]) => (
-            <a key={to} href={to} onClick={() => setOpen(false)} className="block border-b border-white/[0.06] py-4 text-[17px] font-semibold text-white/85">
-              {label}
-            </a>
-          ))}
-          <button type="button" onClick={() => nav(signedIn ? '/' : '/login')} className="mt-5 h-12 w-full rounded-lg bg-white text-sm font-bold text-black">
-            {signedIn ? 'Go to my account' : 'Sign in'}
-          </button>
-        </nav>
-      ) : null}
     </header>
   );
 }
 
-// A night-side planet horizon with a gold rim: the grid at dusk.
-function Horizon() {
+// ---------------------------------------------------------------------------
+// Line art: a lattice pylon and the cables it carries, drawn like a
+// technical sketch. One gold pulse travels the line.
+// ---------------------------------------------------------------------------
+
+function lattice(cx: number, base: number, top: number, halfBase: number, halfTop: number, panels: number) {
+  const at = (y: number) => halfTop + ((y - top) / (base - top)) * (halfBase - halfTop);
+  const lines: string[] = [];
+  let prev = base;
+  for (let i = 1; i <= panels; i++) {
+    // Panels shrink towards the top, like a real tower.
+    const y = base - (base - top) * (1 - Math.pow(1 - i / panels, 1.35));
+    const a = at(prev);
+    const b = at(y);
+    lines.push(`M${cx - a} ${prev}L${cx + b} ${y}M${cx + a} ${prev}L${cx - b} ${y}M${cx - b} ${y}L${cx + b} ${y}`);
+    prev = y;
+  }
+  return `M${cx - halfBase} ${base}L${cx - halfTop} ${top}M${cx + halfBase} ${base}L${cx + halfTop} ${top}` + lines.join('');
+}
+
+function Pylon({ cx, base, h, w, arms }: { cx: number; base: number; h: number; w: number; arms: [number, number][] }) {
+  const top = base - h;
+  const body = lattice(cx, base, top + h * 0.2, w, w * 0.16, 9);
+  const head = `M${cx - w * 0.16} ${top + h * 0.2}L${cx} ${top}L${cx + w * 0.16} ${top + h * 0.2}`;
+  const armPaths = arms
+    .map(([dy, span]) => {
+      const y = top + h * dy;
+      return `M${cx - span} ${y}L${cx + span} ${y}M${cx - span} ${y}L${cx - w * 0.12} ${y + h * 0.035}M${cx + span} ${y}L${cx + w * 0.12} ${y + h * 0.035}M${cx - span} ${y}l0 ${h * 0.05}M${cx + span} ${y}l0 ${h * 0.05}`;
+    })
+    .join('');
+  return <path d={body + head + armPaths} />;
+}
+
+// Insulator tips where cables attach: [x, y] for each arm end.
+const tips = (cx: number, base: number, h: number, arms: [number, number][]) =>
+  arms.flatMap(([dy, span]) => {
+    const y = base - h + h * dy + h * 0.05;
+    return [
+      [cx - span, y],
+      [cx + span, y],
+    ] as [number, number][];
+  });
+
+function GridArt({ className = '' }: { className?: string }) {
+  const near = { cx: 1010, base: 900, h: 640, w: 92, arms: [[0.22, 150], [0.36, 185], [0.5, 150]] as [number, number][] };
+  const far = { cx: 330, base: 760, h: 260, w: 36, arms: [[0.22, 60], [0.36, 74], [0.5, 60]] as [number, number][] };
+  const a = tips(near.cx, near.base, near.h, near.arms);
+  const b = tips(far.cx, far.base, far.h, far.arms);
+  // Catenary-ish sag between towers, and off the left edge beyond the far tower.
+  const cables = a.map(([x1, y1], i) => {
+    const [x2, y2] = b[i];
+    const sag = 120 + i * 6;
+    const out = `M${x2} ${y2}Q${x2 - 260} ${y2 + 60} ${-40} ${y2 + 20}`;
+    const off = `M${x1} ${y1}Q${x1 + 160} ${y1 + 70} ${1300} ${y1 + 40}`;
+    return { span: `M${x1} ${y1}Q${(x1 + x2) / 2} ${Math.max(y1, y2) + sag} ${x2} ${y2}`, out, off };
+  });
   return (
-    <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_120%,rgb(var(--zener-gold)/0.28),transparent_60%)]" />
-      <div
-        className="absolute left-1/2 top-[80%] aspect-square w-[230vw] -translate-x-1/2 rounded-full border-t border-zener-gold/50 bg-black sm:top-[70%] sm:w-[170vw] lg:top-[60%] lg:w-[140vw]"
-        style={{
-          boxShadow: '0 -30px 120px rgb(var(--zener-gold) / 0.32), inset 0 30px 80px rgb(var(--zener-gold) / 0.12)',
-          backgroundImage:
-            'radial-gradient(circle at 50% 2%, rgb(var(--zener-gold) / 0.55) 0 1px, transparent 1.5px), radial-gradient(circle, rgb(255 210 150 / 0.35) 0 1px, transparent 1.4px)',
-          backgroundSize: '100% 100%, 26px 26px',
-        }}
-      />
-      <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black to-transparent" />
-    </div>
+    <svg viewBox="0 0 1200 900" preserveAspectRatio="xMaxYMax slice" aria-hidden="true" className={className}>
+      <g fill="none" stroke="white" strokeOpacity="0.16" strokeWidth="1" vectorEffect="non-scaling-stroke">
+        <Pylon {...near} />
+        <Pylon {...far} />
+        {cables.map((c, i) => (
+          <g key={i}>
+            <path d={c.span} />
+            <path d={c.out} />
+            <path d={c.off} />
+          </g>
+        ))}
+        <path d="M-20 900L1220 900" strokeOpacity="0.1" />
+      </g>
+      <path id="zl-live" d={cables[1].span} fill="none" stroke="none" />
+      <circle r="2.6" fill="rgb(var(--zener-gold))">
+        <animateMotion dur="5.5s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear">
+          <mpath href="#zl-live" />
+        </animateMotion>
+      </circle>
+      <circle r="9" fill="rgb(var(--zener-gold))" opacity="0.18">
+        <animateMotion dur="5.5s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear">
+          <mpath href="#zl-live" />
+        </animateMotion>
+      </circle>
+    </svg>
+  );
+}
+
+// A 50 Hz trace across the facts strip, scrolling slowly like a scope.
+function SineTrace() {
+  const W = 1200;
+  const cycles = 6;
+  const pts: string[] = [];
+  for (let x = 0; x <= W * 2; x += 6) pts.push(`${x},${60 - 26 * Math.sin((x / W) * cycles * 2 * Math.PI)}`);
+  return (
+    <svg viewBox={`0 0 ${W} 120`} preserveAspectRatio="none" aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-1/2 h-28 w-full -translate-y-1/2">
+      <g className="zl-scroll">
+        <polyline points={pts.join(' ')} fill="none" stroke="rgb(var(--zener-gold))" strokeOpacity="0.35" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />
+      </g>
+      <line x1="0" y1="60" x2={W} y2="60" stroke="white" strokeOpacity="0.06" vectorEffect="non-scaling-stroke" />
+      <style>{`.zl-scroll{animation:zl-scroll 14s linear infinite}@keyframes zl-scroll{to{transform:translateX(-${W}px)}}@media (prefers-reduced-motion:reduce){.zl-scroll{animation:none}}`}</style>
+    </svg>
   );
 }
 
@@ -155,14 +230,14 @@ function HeroBuyForm({ discos, nav }: { discos: Disco[]; nav: Nav }) {
         e.preventDefault();
         if (ok) nav(`/buy?disco=${chosen}&meter=${meter}&type=prepaid`);
       }}
-      className="mt-9 flex w-full max-w-2xl scroll-mt-28 flex-col gap-2 rounded-2xl border border-white/[0.12] bg-black/50 p-2 backdrop-blur sm:flex-row"
+      className="mt-10 flex w-full max-w-xl scroll-mt-28 flex-col gap-2 sm:flex-row"
     >
-      <label className="relative sm:w-56">
+      <label className="relative sm:w-52">
         <span className="sr-only">Electricity company</span>
         <select
           value={chosen}
           onChange={(e) => setDisco(e.target.value)}
-          className="h-14 w-full appearance-none rounded-xl bg-white/[0.06] pl-4 pr-10 text-[15px] font-semibold text-white outline-none focus:bg-white/[0.1]"
+          className="h-12 w-full appearance-none rounded-md border border-white/20 bg-black/40 pl-4 pr-10 text-[15px] font-medium text-white outline-none backdrop-blur focus:border-white/60"
         >
           {discos.length ? null : <option value="">Loading DisCos…</option>}
           {discos.map((d) => (
@@ -171,7 +246,7 @@ function HeroBuyForm({ discos, nav }: { discos: Disco[]; nav: Nav }) {
             </option>
           ))}
         </select>
-        <ChevronDown size={17} className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-white/45" />
+        <ChevronDown size={16} className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-white/45" />
       </label>
       <label className="flex-1">
         <span className="sr-only">Meter number</span>
@@ -179,24 +254,26 @@ function HeroBuyForm({ discos, nav }: { discos: Disco[]; nav: Nav }) {
           inputMode="numeric"
           value={meter}
           onChange={(e) => setMeter(e.target.value.replace(/\D/g, '').slice(0, 20))}
-          placeholder="Enter your meter number"
-          className="h-14 w-full rounded-xl bg-white/[0.06] px-4 text-[15px] text-white outline-none placeholder:text-white/35 focus:bg-white/[0.1]"
+          placeholder="Meter number"
+          className="h-12 w-full rounded-md border border-white/20 bg-black/40 px-4 text-[15px] text-white outline-none backdrop-blur placeholder:text-white/40 focus:border-white/60"
         />
       </label>
       <button
         type="submit"
         disabled={!ok}
-        className="flex h-14 items-center justify-center gap-2 rounded-xl bg-zener-gold px-7 text-[15px] font-bold text-black transition hover:brightness-110 disabled:opacity-50"
+        className="h-12 rounded-md bg-white px-6 text-[14px] font-bold text-black transition hover:bg-white/85 disabled:opacity-60"
       >
-        Buy now <ArrowRight size={17} />
+        Buy now
       </button>
     </form>
   );
 }
 
-function Panel({ id, eyebrow, title, body, children, cta, reverse = false }: {
+const primaryBtn = 'inline-flex h-11 items-center gap-2 rounded-md bg-white px-5 text-sm font-bold text-black transition hover:bg-white/85';
+const ghostBtn = 'inline-flex h-11 items-center gap-2 rounded-md border border-white/25 px-5 text-sm font-bold text-white transition hover:border-white/60';
+
+function Panel({ id, title, body, children, cta, reverse = false }: {
   id?: string;
-  eyebrow: string;
   title: string;
   body: string;
   children: React.ReactNode;
@@ -204,12 +281,11 @@ function Panel({ id, eyebrow, title, body, children, cta, reverse = false }: {
   reverse?: boolean;
 }) {
   return (
-    <section id={id} className="scroll-mt-20 border-t border-white/[0.06]">
-      <div className={`mx-auto grid max-w-7xl items-center gap-12 px-5 py-20 sm:px-8 lg:grid-cols-2 lg:gap-20 lg:py-28 ${reverse ? 'lg:[&>*:first-child]:order-2' : ''}`}>
+    <section id={id} className="scroll-mt-24 border-t border-white/[0.07]">
+      <div className={`mx-auto grid max-w-6xl items-center gap-14 px-5 py-24 sm:px-8 lg:grid-cols-2 lg:gap-24 lg:py-32 ${reverse ? 'lg:[&>*:first-child]:order-2' : ''}`}>
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.22em] text-zener-gold">{eyebrow}</p>
-          <h2 className="mt-4 max-w-xl text-4xl font-black leading-[1.05] tracking-tight sm:text-5xl">{title}</h2>
-          <p className="mt-5 max-w-lg text-[17px] leading-8 text-white/60">{body}</p>
+          <h2 className="max-w-md text-[34px] font-bold leading-[1.1] tracking-tight sm:text-[44px]">{title}</h2>
+          <p className="mt-5 max-w-md text-[16px] leading-7 text-white/55">{body}</p>
           {cta ? <div className="mt-8 flex flex-wrap gap-3">{cta}</div> : null}
         </div>
         <div>{children}</div>
@@ -218,52 +294,38 @@ function Panel({ id, eyebrow, title, body, children, cta, reverse = false }: {
   );
 }
 
-const primaryBtn = 'inline-flex h-12 items-center gap-2 rounded-lg bg-white px-6 text-sm font-bold text-black transition hover:bg-white/85';
-const ghostBtn = 'inline-flex h-12 items-center gap-2 rounded-lg border border-white/25 px-6 text-sm font-bold text-white transition hover:border-white/60';
-
-function WalletMock() {
+// Product shots, drawn flat: the account screen and a meter sticker.
+function AccountShot() {
   return (
-    <div className="mx-auto w-full max-w-md rounded-3xl border border-white/[0.08] bg-gradient-to-b from-white/[0.05] to-transparent p-6 shadow-2xl">
-      <div className="rounded-2xl border border-zener-gold/25 bg-gradient-to-br from-zener-gold/[0.2] to-zener-gold/[0.03] p-6">
-        <p className="flex items-center gap-2 text-xs font-semibold text-white/60"><Wallet size={14} className="text-zener-gold" /> Wallet balance</p>
-        <p className="mt-2 text-4xl font-black tracking-tight">₦12,500.00</p>
+    <div className="mx-auto w-full max-w-sm rounded-[28px] border border-white/[0.1] bg-[#0b0b0b] p-5">
+      <div className="flex items-center justify-between text-[11px] text-white/40">
+        <span className="font-bold tracking-[0.3em] text-white/70">ZENERLINK</span>
+        <span>Wallet ₦12,500</span>
       </div>
-      <p className="mb-2 mt-6 text-xs font-semibold text-white/40">Saved meters</p>
-      {[
-        ['Home', '0101 2345 678', 'Ikeja Electric'],
-        ['Shop', '4512 0098 331', 'Abuja Electricity'],
-      ].map(([n, m, d]) => (
-        <div key={m} className="mb-2 flex items-center justify-between rounded-xl border border-white/[0.07] px-4 py-3">
-          <span>
-            <span className="block text-sm font-semibold">{n}</span>
-            <span className="block text-xs text-white/40">{m} · {d}</span>
-          </span>
-          <span className="rounded-md bg-zener-gold/15 px-3 py-1.5 text-xs font-bold text-zener-gold">Buy</span>
-        </div>
-      ))}
-      <div className="mt-4 rounded-xl bg-zener-gold/[0.08] p-4 text-center">
-        <p className="text-[11px] font-semibold text-white/45">Electricity token</p>
-        <p className="mt-1 font-mono text-lg font-bold tracking-wider text-zener-gold">2636 2054 4059 8275 7802</p>
+      <p className="mt-8 text-[13px] text-white/45">Ikeja Electric · 0101 2345 678</p>
+      <p className="mt-1 text-3xl font-bold tracking-tight">₦5,000</p>
+      <p className="mt-1 text-[13px] text-zener-gold">≈ 25 kWh</p>
+      <div className="mt-6 border-t border-white/[0.08] pt-5">
+        <p className="text-[11px] text-white/40">Token</p>
+        <p className="mt-1.5 font-mono text-[17px] tracking-wider text-white">2636 2054 4059 8275 7802</p>
       </div>
+      <div className="mt-6 h-11 rounded-md bg-white text-center text-[13px] font-bold leading-[44px] text-black">Buy again</div>
     </div>
   );
 }
 
-function StickerMock() {
+function StickerShot() {
   const brand = useBrand();
   const [qr, setQr] = useState('');
   useEffect(() => {
     QRCode.toDataURL(window.location.origin, { margin: 0, width: 320 }).then(setQr).catch(() => undefined);
   }, []);
   return (
-    <div className="mx-auto w-64 rotate-[-4deg] overflow-hidden rounded-2xl bg-white text-black shadow-[0_40px_120px_rgba(0,0,0,0.6)] sm:w-72">
-      <div className="border-b-4 border-zener-gold bg-[#0b0b0b] py-4 text-center text-sm font-black tracking-[0.3em] text-white">{brand.display_name.toUpperCase()}</div>
-      <div className="px-7 pb-6 pt-5 text-center">
-        <p className="text-lg font-extrabold">Scan to buy electricity</p>
-        <div className="mx-auto mt-4 aspect-square w-full">{qr ? <img src={qr} alt="" className="h-full w-full" /> : null}</div>
-        <p className="mt-4 font-mono text-xl font-extrabold">0101 2345 678</p>
-        <p className="text-xs text-black/50">Ikeja Electric · Flat 4B</p>
-      </div>
+    <div className="mx-auto w-60 bg-white p-6 text-center text-black sm:w-64">
+      <p className="text-[11px] font-black tracking-[0.34em]">{brand.display_name.toUpperCase()}</p>
+      <div className="mx-auto mt-5 aspect-square w-full">{qr ? <img src={qr} alt="" className="h-full w-full" /> : null}</div>
+      <p className="mt-5 font-mono text-lg font-bold">0101 2345 678</p>
+      <p className="mt-1 text-[11px] text-black/50">Scan to buy electricity</p>
     </div>
   );
 }
@@ -287,60 +349,70 @@ export function Landing({ nav, signedIn }: { nav: Nav; signedIn: boolean }) {
       <TopNav nav={nav} signedIn={signedIn} />
 
       {/* Hero */}
-      <section className="relative flex min-h-[100svh] items-center overflow-hidden">
-        <Horizon />
-        <div className="relative mx-auto w-full max-w-7xl px-5 pb-40 pt-32 sm:px-8 lg:pb-48">
-          <p className="text-xs font-bold uppercase tracking-[0.26em] text-white/55">Prepaid electricity · Nigeria</p>
-          <h1 className="mt-5 max-w-3xl text-[44px] font-black leading-[1.02] tracking-tight sm:text-7xl lg:text-[86px]">Power, on demand.</h1>
-          <p className="mt-6 max-w-xl text-lg leading-8 text-white/65">
-            Recharge any prepaid meter on any DisCo. Pay by card, transfer or USSD and your token appears in seconds.
+      <section className="relative flex min-h-[100svh] items-end overflow-hidden lg:items-center">
+        {HERO_PHOTO ? (
+          <>
+            <img src={HERO_PHOTO} alt="" className="absolute inset-0 h-full w-full object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/50 to-black/10" />
+          </>
+        ) : (
+          <>
+            <GridArt className="absolute inset-0 h-full w-full" />
+            <div className="absolute inset-0 bg-gradient-to-r from-black via-black/80 to-transparent lg:via-black/60" />
+            <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black to-transparent" />
+          </>
+        )}
+        <div className="relative mx-auto w-full max-w-6xl px-5 pb-20 pt-36 sm:px-8 lg:pb-24">
+          <h1 className="max-w-2xl text-[46px] font-bold leading-[1.02] tracking-tight sm:text-[68px] lg:text-[80px]">Power, on&nbsp;demand.</h1>
+          <p className="mt-6 max-w-md text-[17px] leading-7 text-white/65">
+            Recharge any prepaid meter on any DisCo in Nigeria. Pay by card, transfer or USSD. Your token arrives in seconds.
           </p>
           <HeroBuyForm discos={discos} nav={nav} />
-          <p className="mt-4 text-sm text-white/45">
+          <p className="mt-5 text-sm text-white/45">
             {signedIn ? (
-              <button type="button" onClick={() => nav('/')} className="font-semibold text-white/80 underline-offset-4 hover:underline">Go to your account</button>
+              <button type="button" onClick={() => nav('/')} className="text-white/80 underline underline-offset-4 hover:text-white">Go to your account</button>
             ) : (
               <>
-                Already have an account?{' '}
-                <button type="button" onClick={() => nav('/login')} className="font-semibold text-white/80 underline-offset-4 hover:underline">Sign in</button>
+                Have an account?{' '}
+                <button type="button" onClick={() => nav('/login')} className="text-white/80 underline underline-offset-4 hover:text-white">Sign in</button>
               </>
             )}
           </p>
         </div>
       </section>
 
-      {/* Facts */}
-      <section className="border-t border-white/[0.06] bg-black">
-        <dl className="mx-auto grid max-w-7xl grid-cols-2 gap-y-8 px-5 py-12 sm:px-8 lg:grid-cols-4">
+      {/* Facts on a 50 Hz trace */}
+      <section className="relative overflow-hidden border-y border-white/[0.07]">
+        <SineTrace />
+        <dl className="relative mx-auto grid max-w-6xl grid-cols-2 gap-y-10 px-5 py-14 sm:px-8 lg:grid-cols-4 lg:py-16">
           {[
-            [discos.length ? String(discos.length) : '11', 'DisCos supported'],
-            ['Seconds', 'From payment to token'],
-            ['24/7', 'Buy any time, day or night'],
-            ['Card · Transfer · USSD', 'Or pay from your wallet'],
+            [discos.length ? String(discos.length) : '11', 'DisCos'],
+            ['Seconds', 'Payment to token'],
+            ['24/7', 'Open all hours'],
+            ['3 ways', 'Card, transfer, USSD'],
           ].map(([v, l]) => (
-            <div key={l} className="border-l border-white/[0.1] pl-5">
-              <dt className="text-2xl font-black tracking-tight sm:text-3xl">{v}</dt>
-              <dd className="mt-1 text-sm text-white/45">{l}</dd>
+            <div key={l}>
+              <dt className="text-[34px] font-bold leading-none tracking-tight sm:text-[42px]">{v}</dt>
+              <dd className="mt-3 font-mono text-[11px] uppercase tracking-[0.18em] text-white/45">{l}</dd>
             </div>
           ))}
         </dl>
       </section>
 
       {/* How it works */}
-      <section id="how" className="scroll-mt-20 border-t border-white/[0.06]">
-        <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8 lg:py-28">
-          <p className="text-xs font-bold uppercase tracking-[0.22em] text-zener-gold">How it works</p>
-          <h2 className="mt-4 max-w-2xl text-4xl font-black leading-[1.05] tracking-tight sm:text-5xl">From meter number to token in three steps.</h2>
-          <ol className="mt-14 grid gap-px overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.08] md:grid-cols-3">
+      <section id="how" className="scroll-mt-24">
+        <div className="mx-auto max-w-6xl px-5 py-24 sm:px-8 lg:py-32">
+          <h2 className="max-w-lg text-[34px] font-bold leading-[1.1] tracking-tight sm:text-[44px]">Meter number to token, in three steps.</h2>
+          <ol className="mt-16 grid gap-12 md:grid-cols-3 md:gap-10">
             {[
-              ['Enter your meter', 'Pick your DisCo and type your meter number. We confirm the account name with the DisCo before you pay.'],
-              ['Pay your way', 'Card, bank transfer or USSD through a secure checkout, or one tap from your wallet.'],
-              ['Load your token', 'Your 20-digit token appears instantly and is saved to your account. Type it on your meter keypad.'],
+              ['Enter your meter', 'Choose your DisCo and type the meter number. We check the name on the meter with the DisCo before you pay.'],
+              ['Pay', 'Card, bank transfer or USSD through a secure checkout, or one tap from your wallet.'],
+              ['Load the token', 'The 20-digit token appears on screen and in your account. Type it on your meter keypad.'],
             ].map(([t, d], i) => (
-              <li key={t} className="bg-black p-8 lg:p-10">
-                <span className="font-mono text-sm font-bold text-zener-gold">0{i + 1}</span>
-                <h3 className="mt-6 text-xl font-bold">{t}</h3>
-                <p className="mt-3 text-[15px] leading-7 text-white/55">{d}</p>
+              <li key={t} className="border-t border-white/20 pt-6">
+                <span className="font-mono text-[12px] text-white/40">{String(i + 1).padStart(2, '0')}</span>
+                <h3 className="mt-3 text-lg font-bold">{t}</h3>
+                <p className="mt-2 text-[15px] leading-7 text-white/55">{d}</p>
               </li>
             ))}
           </ol>
@@ -348,37 +420,34 @@ export function Landing({ nav, signedIn }: { nav: Nav; signedIn: boolean }) {
       </section>
 
       <Panel
-        eyebrow="Your account"
-        title="Your wallet. Your meters. One tap."
-        body="Keep a balance, save every meter you buy for, and find any token again from your purchase history. Buying for home, the shop and your parents takes seconds."
+        title="One account for every meter you pay for."
+        body="Home, the shop, your parents’ flat. Save each meter once, keep a wallet balance, and find any token again in your history."
         cta={
           <button type="button" onClick={() => nav(signedIn ? '/' : '/login')} className={primaryBtn}>
-            {signedIn ? 'Go to my account' : 'Create a free account'}
+            {signedIn ? 'Go to my account' : 'Create an account'}
           </button>
         }
       >
-        <WalletMock />
+        <AccountShot />
       </Panel>
 
       <Panel
         reverse
-        eyebrow="Meter QR"
-        title="Scan to pay. For anyone, anywhere."
-        body="Every saved meter gets its own QR code. Stick it on the meter or send it on WhatsApp. Whoever scans it lands on a pre-filled order and only enters the amount."
+        title="Scan the meter. Pay. Done."
+        body="Every saved meter gets a QR code. Stick it on the meter or send it on WhatsApp. Whoever scans it only has to enter the amount."
         cta={
           <button type="button" onClick={() => nav(signedIn ? '/meters' : '/login')} className={ghostBtn}>
-            <QrCode size={16} /> Get your meter QR
+            <QrCode size={16} /> Get a meter QR
           </button>
         }
       >
-        <StickerMock />
+        <StickerShot />
       </Panel>
 
       <Panel
         id="business"
-        eyebrow="Business"
-        title="Built for estates, landlords and property managers."
-        body="Print a QR sticker for every unit so tenants recharge themselves, keep track of every purchase, and stop collecting cash for tokens. White-label options are available for partners."
+        title="For estates, landlords and property managers."
+        body="A QR sticker on every unit so tenants recharge themselves. Every meter and purchase in one place. No more collecting cash for tokens."
         cta={
           brand.support_email ? (
             <a href={`mailto:${brand.support_email}?subject=${encodeURIComponent('Zenerlink for business')}`} className={primaryBtn}>
@@ -387,33 +456,30 @@ export function Landing({ nav, signedIn }: { nav: Nav; signedIn: boolean }) {
           ) : null
         }
       >
-        <ul className="space-y-3">
+        <dl className="divide-y divide-white/[0.08] border-y border-white/[0.08]">
           {[
-            ['QR stickers for every meter', 'Tenants scan and pay. No meter numbers to copy, no mistakes.'],
-            ['One account, many meters', 'Every flat, office and shop in one list, with the last purchase for each.'],
-            ['Your brand, our platform', 'Run Zenerlink under your own name and colours.'],
+            ['Stickers', 'A QR code for every meter you manage'],
+            ['Meters', 'Every flat, office and shop in one list'],
+            ['White label', 'Run it under your own name and colours'],
           ].map(([t, d]) => (
-            <li key={t} className="flex gap-4 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6">
-              <Check size={20} className="mt-0.5 shrink-0 text-zener-gold" />
-              <span>
-                <span className="block font-bold">{t}</span>
-                <span className="mt-1 block text-[15px] text-white/55">{d}</span>
-              </span>
-            </li>
+            <div key={t} className="grid grid-cols-[120px_1fr] gap-4 py-5 sm:grid-cols-[160px_1fr]">
+              <dt className="font-mono text-[12px] uppercase tracking-[0.16em] text-white/40">{t}</dt>
+              <dd className="text-[15px] text-white/80">{d}</dd>
+            </div>
           ))}
-        </ul>
+        </dl>
       </Panel>
 
       {/* DisCos */}
       {discos.length ? (
-        <section className="border-t border-white/[0.06]">
-          <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8">
-            <h2 className="text-2xl font-black tracking-tight sm:text-3xl">Works with your DisCo</h2>
-            <ul className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        <section className="border-t border-white/[0.07]">
+          <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8">
+            <h2 className="text-xl font-bold tracking-tight">Works with</h2>
+            <ul className="mt-6 grid grid-cols-2 gap-x-8 sm:grid-cols-3 lg:grid-cols-4">
               {discos.map((d) => (
-                <li key={d.provider_code} className="flex items-center gap-3 rounded-xl border border-white/[0.08] px-4 py-3.5">
+                <li key={d.provider_code} className="flex items-center gap-3 border-b border-white/[0.07] py-4">
                   <DiscoMark disco={d} />
-                  <span className="truncate text-sm font-semibold text-white/80">{d.provider_name}</span>
+                  <span className="truncate text-[14px] text-white/70">{d.provider_name}</span>
                 </li>
               ))}
             </ul>
@@ -422,25 +488,23 @@ export function Landing({ nav, signedIn }: { nav: Nav; signedIn: boolean }) {
       ) : null}
 
       {/* FAQ */}
-      <section id="faq" className="scroll-mt-20 border-t border-white/[0.06]">
-        <div className="mx-auto grid max-w-7xl gap-12 px-5 py-20 sm:px-8 lg:grid-cols-[1fr_1.4fr] lg:py-28">
+      <section id="faq" className="scroll-mt-24 border-t border-white/[0.07]">
+        <div className="mx-auto grid max-w-6xl gap-12 px-5 py-24 sm:px-8 lg:grid-cols-[1fr_1.5fr] lg:py-32">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.22em] text-zener-gold">Support</p>
-            <h2 className="mt-4 text-4xl font-black leading-[1.05] tracking-tight sm:text-5xl">Questions, answered.</h2>
+            <h2 className="text-[34px] font-bold leading-[1.1] tracking-tight sm:text-[44px]">Questions</h2>
             {brand.support_email ? (
-              <p className="mt-5 text-[17px] leading-8 text-white/60">
-                Still stuck? Email{' '}
-                <a href={`mailto:${brand.support_email}`} className="font-semibold text-white underline underline-offset-4">{brand.support_email}</a>
-                {brand.support_phone ? <> or call <a href={`tel:${brand.support_phone}`} className="font-semibold text-white underline underline-offset-4">{brand.support_phone}</a></> : null}.
+              <p className="mt-5 text-[15px] leading-7 text-white/55">
+                Something else? <a href={`mailto:${brand.support_email}`} className="text-white underline underline-offset-4">{brand.support_email}</a>
+                {brand.support_phone ? <> · <a href={`tel:${brand.support_phone}`} className="text-white underline underline-offset-4">{brand.support_phone}</a></> : null}
               </p>
             ) : null}
           </div>
           <div className="divide-y divide-white/[0.08] border-y border-white/[0.08]">
             {FAQS.map(([q, a]) => (
               <details key={q} className="group py-5">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-6 text-[17px] font-semibold">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-6 text-[16px] font-medium">
                   {q}
-                  <ChevronDown size={18} className="shrink-0 text-white/45 transition group-open:rotate-180" />
+                  <ChevronDown size={17} className="shrink-0 text-white/40 transition group-open:rotate-180" />
                 </summary>
                 <p className="mt-3 max-w-2xl text-[15px] leading-7 text-white/55">{a}</p>
               </details>
@@ -449,30 +513,18 @@ export function Landing({ nav, signedIn }: { nav: Nav; signedIn: boolean }) {
         </div>
       </section>
 
-      {/* Closing call to action */}
-      <section className="relative overflow-hidden border-t border-white/[0.06]">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_100%,rgb(var(--zener-gold)/0.22),transparent_65%)]" />
-        <div className="relative mx-auto max-w-7xl px-5 py-24 text-center sm:px-8 lg:py-32">
-          <h2 className="mx-auto max-w-3xl text-4xl font-black leading-[1.05] tracking-tight sm:text-6xl">Never get caught in the dark.</h2>
-          <div className="mt-9 flex flex-wrap justify-center gap-3">
-            <a href="#buy" className={primaryBtn}>Buy electricity</a>
-            <button type="button" onClick={() => nav(signedIn ? '/' : '/login')} className={ghostBtn}>{signedIn ? 'My account' : 'Sign in'}</button>
-          </div>
-        </div>
-      </section>
-
-      <footer className="border-t border-white/[0.06]">
-        <div className="mx-auto flex max-w-7xl flex-col gap-6 px-5 py-10 text-sm text-white/45 sm:px-8 md:flex-row md:items-center md:justify-between">
+      <footer className="border-t border-white/[0.07]">
+        <div className="mx-auto flex max-w-6xl flex-col gap-8 px-5 py-12 text-[13px] text-white/40 sm:px-8 md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="text-[15px] font-black tracking-[0.3em] text-white/85">{brand.display_name.toUpperCase()}</p>
-            <p className="mt-2">&copy; {year} {brand.display_name}. A product of Zieon Energies Ltd, RC 9519634.</p>
+            <p className="text-[14px] font-black tracking-[0.34em] text-white/80">{brand.display_name.toUpperCase()}</p>
+            <p className="mt-3">&copy; {year} {brand.display_name}. A product of Zieon Energies Ltd, RC 9519634.</p>
           </div>
           <nav className="flex flex-wrap gap-x-6 gap-y-2">
             {SECTIONS.map(([to, label]) => (
               <a key={to} href={to} className="hover:text-white">{label}</a>
             ))}
             {brand.support_email ? <a href={`mailto:${brand.support_email}`} className="hover:text-white">{brand.support_email}</a> : null}
-            <span className="flex items-center gap-1.5"><Lock size={13} /> Secured payments</span>
+            <span className="flex items-center gap-1.5"><Lock size={12} /> Secured payments</span>
           </nav>
         </div>
       </footer>
@@ -483,10 +535,10 @@ export function Landing({ nav, signedIn }: { nav: Nav; signedIn: boolean }) {
 function DiscoMark({ disco }: { disco: Disco }) {
   const [broken, setBroken] = useState(false);
   if (disco.logo_url && !broken) {
-    return <img src={disco.logo_url} alt="" loading="lazy" onError={() => setBroken(true)} className="h-8 w-8 shrink-0 rounded-md bg-white object-contain" />;
+    return <img src={disco.logo_url} alt="" loading="lazy" onError={() => setBroken(true)} className="h-7 w-7 shrink-0 rounded bg-white object-contain" />;
   }
   return (
-    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-white/[0.08] text-[8px] font-bold text-white/70">{disco.provider_code.slice(0, 5)}</span>
+    <span className="grid h-7 w-7 shrink-0 place-items-center rounded bg-white/[0.08] text-[8px] font-bold text-white/60">{disco.provider_code.slice(0, 5)}</span>
   );
 }
 
