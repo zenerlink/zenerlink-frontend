@@ -1086,7 +1086,8 @@ function WalletPage({ funded }: { funded: boolean }) {
     if (!ok) return setError('Enter an amount between ₦100 and ₦1,000,000.');
     setBusy(true);
     try {
-      const r = await api.fundWallet(nairaToKobo(value), 'card');
+      // Come back to this wallet page (keeps ?mode=vend on staging).
+      const r = await api.fundWallet(nairaToKobo(value), 'card', window.location.origin + href('/wallet?funded=1'));
       if (r.payment?.checkout_url && r.payment.status !== 'succeeded') {
         window.location.assign(r.payment.checkout_url);
         return;

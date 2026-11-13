@@ -179,8 +179,14 @@ export const api = {
   },
   me: () => request<{ user: User; branding: Branding }>('GET', '/v1/me'),
   wallet: () => request<{ balance_kobo: number; reward_balance_kobo: number }>('GET', '/v1/wallet'),
-  fundWallet: (amount_kobo: number, method: 'card' | 'bank_transfer') =>
-    request<{ payment: Purchase['payment']; wallet: { balance_kobo: number }; sandbox: boolean }>('POST', '/v1/wallet/fund', { amount_kobo, method }, idem()),
+  // callback_url: where the payment page returns the buyer (an approved origin).
+  fundWallet: (amount_kobo: number, method: 'card' | 'bank_transfer', callback_url?: string) =>
+    request<{ payment: Purchase['payment']; wallet: { balance_kobo: number }; sandbox: boolean }>(
+      'POST',
+      '/v1/wallet/fund',
+      { amount_kobo, method, ...(callback_url ? { callback_url } : {}) },
+      idem(),
+    ),
   meters: () => request<{ meters: ApiMeter[] }>('GET', '/v1/meters'),
   validateMeter: (provider_code: string, meter_number: string) =>
     request<{ verified: boolean; customer_name: string; address: string; message: string }>('POST', '/v1/meters/validate', { provider_code, meter_number }),
