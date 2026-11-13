@@ -179,18 +179,33 @@ function Split({ aside, children }: { aside?: React.ReactNode; children: React.R
       <aside className="relative flex flex-col overflow-hidden border-b border-white/[0.06] px-6 py-6 lg:min-h-screen lg:border-b-0 lg:border-r lg:px-12 lg:py-10">
         <div className="pointer-events-none absolute -left-40 -top-40 h-[28rem] w-[28rem] rounded-full bg-zener-gold/[0.10] blur-3xl" />
         <a href={href('/')} className="relative flex items-center gap-3">
-          <Wordmark fontSize={17} />
+          <Wordmark fontSize={18} />
         </a>
         <div className="relative mt-8 flex-1 lg:mt-16">{aside}</div>
-        <footer className="relative mt-10 hidden items-center justify-between text-xs text-white/35 lg:flex">
-          <span>{brand.support_email ? <>Help: {brand.support_email}</> : <>&copy; {new Date().getFullYear()} {brand.display_name}</>}</span>
-          <span className="flex items-center gap-1.5"><Lock size={12} /> Secured payments</span>
-        </footer>
+        <SiteFooter className="relative mt-10 hidden lg:flex" />
       </aside>
       <main className="flex items-start justify-center px-6 py-8 sm:py-12 lg:items-center lg:px-16">
         <div className="w-full max-w-[460px]">{children}</div>
       </main>
+      <SiteFooter className="flex border-t border-white/[0.06] px-6 py-5 lg:hidden" />
     </div>
+  );
+}
+
+// Minimal footer: copyright, help, and the payment reassurance.
+function SiteFooter({ className = '', onHelp }: { className?: string; onHelp?: () => void }) {
+  const brand = useBrand();
+  return (
+    <footer className={`flex-wrap items-center justify-between gap-x-6 gap-y-2 text-xs text-white/35 ${className}`}>
+      <span>&copy; {new Date().getFullYear()} {brand.display_name}</span>
+      <span className="flex items-center gap-5">
+        {onHelp ? (
+          <button type="button" onClick={onHelp} className="hover:text-white/70">Help</button>
+        ) : null}
+        {brand.support_email ? <a href={`mailto:${brand.support_email}`} className="hover:text-white/70">{brand.support_email}</a> : null}
+        <span className="flex items-center gap-1.5"><Lock size={12} /> Secured payments</span>
+      </span>
+    </footer>
   );
 }
 
@@ -363,11 +378,11 @@ function Shell({ children }: { children: React.ReactNode }) {
   });
 
   return (
-    <div className="min-h-screen">
+    <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-[rgb(var(--zener-background))]/90 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
           <a {...link('/')} className="flex items-center gap-3">
-            <Wordmark fontSize={17} />
+            <Wordmark fontSize={18} />
           </a>
           <div className="flex items-center gap-2 sm:gap-3">
             <a
@@ -427,7 +442,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         </nav>
       </header>
 
-      <div className="mx-auto flex max-w-6xl gap-10 px-4 py-6 sm:px-6 lg:py-10">
+      <div className="mx-auto flex w-full max-w-6xl flex-1 gap-10 px-4 py-6 sm:px-6 lg:py-10">
         <aside className="hidden w-56 shrink-0 lg:block">
           <nav className="sticky top-24 space-y-1">
             {NAV.map(([to, label, Icon]) => (
@@ -451,6 +466,9 @@ function Shell({ children }: { children: React.ReactNode }) {
           </nav>
         </aside>
         <main className="min-w-0 flex-1">{children}</main>
+      </div>
+      <div className="border-t border-white/[0.06]">
+        <SiteFooter className="mx-auto flex max-w-6xl px-4 py-6 sm:px-6" onHelp={() => nav('/help')} />
       </div>
     </div>
   );
@@ -1001,30 +1019,31 @@ async function drawSticker(m: ApiMeter, link: string, brandName: string, logoUrl
   g.fillStyle = '#d4943a';
   g.fillRect(0, 170, W, 10);
 
-  // Wordmark, centred: the Zenerlink logo stands in for the name's "Z".
+  // Brand mark, centred: the Zenerlink logo alone; other brands add their name.
   const name = brandName.toUpperCase();
-  const merged = merge && name.startsWith('Z');
-  const text = (merged ? name.slice(1) : name).split('').join(String.fromCharCode(8202, 8202));
-  g.font = `900 52px ${font}`;
-  g.textBaseline = 'alphabetic';
-  const markH = merged ? 38 : 60;
-  const gap = merged ? 16 : 28;
+  const logoOnly = merge && name.startsWith('Z');
   let logo: HTMLImageElement | null = null;
   try {
     logo = await loadImage(logoUrl);
   } catch {
     /* sticker still works without the logo */
   }
-  const total = (logo ? markH + gap : 0) + g.measureText(text).width;
-  let x = (W - total) / 2;
-  if (logo) {
-    g.drawImage(logo, x, 106 - markH, markH * (logo.width / logo.height || 1), markH);
-    x += markH + gap;
-  }
-  g.fillStyle = '#ffffff';
-  g.textAlign = 'left';
-  g.fillText(text, x, 106);
+  const markH = logoOnly ? 96 : 60;
+  const markW = logo ? markH * (logo.width / logo.height || 1) : 0;
+  g.font = `900 52px ${font}`;
   g.textBaseline = 'middle';
+  const text = logoOnly && logo ? '' : name.split('').join(String.fromCharCode(8202, 8202));
+  const gap = text && logo ? 28 : 0;
+  let x = (W - (markW + gap + (text ? g.measureText(text).width : 0))) / 2;
+  if (logo) {
+    g.drawImage(logo, x, 85 - markH / 2, markW, markH);
+    x += markW + gap;
+  }
+  if (text) {
+    g.fillStyle = '#ffffff';
+    g.textAlign = 'left';
+    g.fillText(text, x, 88);
+  }
 
   g.textAlign = 'center';
   g.fillStyle = '#0b0b0b';
