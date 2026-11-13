@@ -32,6 +32,8 @@ import { BrandContext, fallbackBranding, useBrand } from '../lib/brand';
 import { applyBranding } from '../lib/theme';
 import { formatCurrency } from '../lib/format';
 import { Landing, LoginPage } from './Landing';
+import { LegalPage } from './Legal';
+import { legalByPath } from '../seo/legal';
 import { discoBySlug } from '../seo/site';
 import { buyLink, href, readPrefill } from './links';
 import type { Nav, Prefill } from './links';
@@ -127,6 +129,8 @@ export default function VendRoot() {
     // Public DisCo pages (search landing pages), for everyone.
     const focus = discoBySlug(url.pathname.split('/')[2] ?? '');
     page = <Landing nav={nav} signedIn={!!user} focus={focus} index={!focus} />;
+  } else if (legalByPath(url.pathname)) {
+    page = <LegalPage doc={legalByPath(url.pathname)!} nav={nav} />;
   } else if (checking) {
     page = <div className="grid min-h-screen place-items-center"><Loader2 className="animate-spin text-zener-gold" /></div>;
   } else if (!user) {
@@ -210,6 +214,9 @@ function SiteFooter({ className = '', onHelp }: { className?: string; onHelp?: (
           <button type="button" onClick={onHelp} className="hover:text-white/70">Help</button>
         ) : null}
         {brand.support_email ? <a href={`mailto:${brand.support_email}`} className="hover:text-white/70">{brand.support_email}</a> : null}
+        <a href={href('/terms')} className="hover:text-white/70">Terms</a>
+        <a href={href('/privacy')} className="hover:text-white/70">Privacy</a>
+        <a href={href('/refunds')} className="hover:text-white/70">Refunds</a>
         <span className="flex items-center gap-1.5"><Lock size={12} /> Secured payments</span>
       </span>
     </footer>

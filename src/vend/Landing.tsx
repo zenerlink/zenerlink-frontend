@@ -6,6 +6,7 @@ import { useBrand } from '../lib/brand';
 import familyPhoto from '../assets/photos/family-buying.jpg';
 import pylonsPhoto from '../assets/photos/pylons-sunset.jpg';
 import { href } from './links';
+import { LegalLinks } from './Legal';
 import { brandedQrUrl } from './qr';
 import { discoLogo } from '../assets/discos';
 import { DISCOS, ELECTRICITY, FAQS, HOME, LOGIN, applyPageSeo, discoPage } from '../seo/site';
@@ -554,6 +555,7 @@ export function Landing({ nav, signedIn, focus, index = false }: { nav: Nav; sig
               <a key={to} href={to} className="hover:text-white">{label}</a>
             ))}
             {brand.support_email ? <a href={`mailto:${brand.support_email}`} className="hover:text-white">{brand.support_email}</a> : null}
+            <LegalLinks nav={nav} />
             <span className="flex items-center gap-1.5"><Lock size={12} /> Secured payments</span>
           </nav>
         </div>
@@ -742,6 +744,7 @@ export function LoginPage({ onDone, prefill, nav }: { onDone: (u: User) => void;
           <button type="button" onClick={() => nav('/#how')} className="hover:text-white">How it works</button>
           <button type="button" onClick={() => nav('/#business')} className="hover:text-white">Business</button>
           <button type="button" onClick={() => nav('/#faq')} className="hover:text-white">Help</button>
+          <LegalLinks nav={nav} className="!text-[12px]" />
         </span>
       </footer>
       </div>

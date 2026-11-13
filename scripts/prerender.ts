@@ -8,6 +8,7 @@ import {
   COMPANY, COMPANY_RC, DISCOS, ELECTRICITY, FAQS, HOME, LOGIN, SITE_NAME, SITE_URL, SUPPORT_EMAIL, discoPage,
 } from '../src/seo/site.ts';
 import type { DiscoSeo, PageSeo } from '../src/seo/site.ts';
+import { LEGAL_DOCS, LEGAL_UPDATED } from '../src/seo/legal.ts';
 
 const DIST = new URL('../dist/', import.meta.url).pathname;
 const template = readFileSync(join(DIST, 'index.html'), 'utf8');
@@ -55,7 +56,7 @@ const discoLinks = () =>
   `<ul>${DISCOS.map((d) => `<li><a href="/electricity/${d.slug}">Buy ${esc(d.name)} electricity</a></li>`).join('')}</ul>`;
 const faqHtml = () => `<h2>Questions</h2>${FAQS.map(([q, a]) => `<h3>${esc(q)}</h3><p>${esc(a)}</p>`).join('')}`;
 const nav = `<nav><a href="/">${SITE_NAME}</a> <a href="/electricity">Buy electricity</a> <a href="/login">Sign in</a></nav>`;
-const footer = `<footer><p>&copy; ${new Date().getFullYear()} ${SITE_NAME}. A product of ${COMPANY}, RC ${COMPANY_RC}. Support: ${SUPPORT_EMAIL}</p></footer>`;
+const footer = `<footer><p>&copy; ${new Date().getFullYear()} ${SITE_NAME}. A product of ${COMPANY}, RC ${COMPANY_RC}. Support: ${SUPPORT_EMAIL}</p><p><a href="/terms">Terms of Service</a> <a href="/privacy">Privacy Policy</a> <a href="/refunds">Refund Policy</a></p></footer>`;
 
 type Page = { seo: PageSeo; body: string; data: object[]; priority: string };
 
@@ -92,6 +93,14 @@ const pages: Page[] = [
 <p>${esc(d.legal)} serves ${esc(d.areas)}.</p><h2>Other DisCos</h2>${discoLinks()}${faqHtml()}</main>${footer}`,
     };
   }),
+  ...LEGAL_DOCS.map((d): Page => ({
+    seo: d,
+    priority: '0.3',
+    data: [organization, breadcrumbs([['Home', '/'], [d.heading, d.path]])],
+    body: `${nav}<main><h1>${esc(d.heading)}</h1><p>Last updated ${LEGAL_UPDATED}</p><p>${esc(d.intro)}</p>${d.sections
+      .map(([h, ps]) => `<h2>${esc(h)}</h2>${ps.map((t) => `<p>${esc(t)}</p>`).join('')}`)
+      .join('')}</main>${footer}`,
+  })),
 ];
 
 function render(p: Page) {
