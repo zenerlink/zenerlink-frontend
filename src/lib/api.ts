@@ -243,6 +243,7 @@ export type GuestOrder = {
 
 export const guest = {
   discos: () => raw<{ discos: Disco[] }>('GET', '/v1/public/discos', undefined, { 'X-Tenant': TENANT }),
+  subscribe: (email: string) => raw<void>('POST', '/v1/public/subscribe', { email }, { 'X-Tenant': TENANT }),
   verify: (provider_code: string, meter_number: string, meter_type: string) =>
     raw<PublicMeter>('POST', '/v1/public/meters/verify', { provider_code, meter_number, meter_type }, { 'X-Tenant': TENANT }),
   order: (input: { provider_code: string; meter_number: string; meter_type: string; amount_kobo: number; email: string; phone: string }, idempotencyKey: string) =>

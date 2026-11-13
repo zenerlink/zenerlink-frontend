@@ -570,6 +570,8 @@ export function Landing({ nav, signedIn, focus, index = false }: { nav: Nav; sig
         </div>
       </section>
 
+      <UpdatesSignup nav={nav} />
+
       <footer className="border-t border-white/[0.07]">
         <div className="mx-auto flex max-w-6xl flex-col gap-8 px-5 py-12 text-[13px] text-white/40 sm:px-8 md:flex-row md:items-end md:justify-between">
           <div>
@@ -587,6 +589,77 @@ export function Landing({ nav, signedIn, focus, index = false }: { nav: Nav; sig
         </div>
       </footer>
     </div>
+  );
+}
+
+// Email updates, just above the footer. Thin power lines sag across the
+// background, in keeping with the grid drawings elsewhere on the page.
+function UpdatesSignup({ nav }: { nav: Nav }) {
+  const [email, setEmail] = useState('');
+  const [state, setState] = useState<'idle' | 'busy' | 'done'>('idle');
+  const [error, setError] = useState('');
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) return setError('Enter a valid email address.');
+    setState('busy');
+    try {
+      await guest.subscribe(email.trim());
+      setState('done');
+    } catch (err) {
+      setState('idle');
+      setError(err instanceof ApiError ? err.message : 'Could not sign you up. Try again.');
+    }
+  };
+
+  return (
+    <section className="relative overflow-hidden border-t border-white/[0.07]">
+      <svg aria-hidden="true" viewBox="0 0 1200 300" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full text-white/[0.06]">
+        {Array.from({ length: 7 }, (_, i) => (
+          <path key={i} d={`M-20 ${40 + i * 14} Q 600 ${190 + i * 16} 1220 ${40 + i * 14}`} fill="none" stroke="currentColor" strokeWidth="1" />
+        ))}
+      </svg>
+      <div className="relative mx-auto max-w-xl px-5 py-20 text-center sm:py-24">
+        <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">Get Zenerlink updates</h2>
+        <p className="mt-3 text-[15px] text-white/55">New DisCos, offers and service notices. A few emails a month, never spam.</p>
+        {state === 'done' ? (
+          <p className="mt-8 rounded-md border border-white/15 px-4 py-3 text-[15px] text-white/80">Thanks. You are on the list.</p>
+        ) : (
+          <form onSubmit={submit} className="mt-8 flex flex-col gap-3 text-left sm:flex-row">
+            <input
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              aria-label="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              className="h-12 w-full min-w-0 rounded-md border border-white/20 bg-black/40 px-4 sm:flex-1 text-[15px] text-white outline-none backdrop-blur placeholder:text-white/40 focus:border-white/60"
+            />
+            <button type="submit" disabled={state === 'busy'} className="flex h-12 items-center justify-center gap-2 rounded-md bg-white px-6 text-[14px] font-bold text-black transition hover:bg-white/85 disabled:opacity-60">
+              {state === 'busy' ? <Loader2 size={16} className="animate-spin" /> : null}
+              Sign up
+            </button>
+          </form>
+        )}
+        {error ? <p className="mt-3 text-left text-sm text-red-300">{error}</p> : null}
+        <p className="mt-3 text-left text-[12px] text-white/40">
+          By signing up you agree to our{' '}
+          <a
+            href={href('/privacy')}
+            onClick={(e) => {
+              e.preventDefault();
+              nav('/privacy');
+            }}
+            className="font-semibold text-white/70 underline underline-offset-2 hover:text-white"
+          >
+            Privacy Policy
+          </a>
+          . Unsubscribe any time.
+        </p>
+      </div>
+    </section>
   );
 }
 
