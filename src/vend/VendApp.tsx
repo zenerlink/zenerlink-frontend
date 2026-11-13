@@ -156,6 +156,7 @@ function BuyPage() {
   const phoneOk = /^\+?\d{10,14}$/.test(phone.replace(/[\s-]/g, ''));
   const emailOk = /^\S+@\S+\.\S+$/.test(email);
   const ready = !!meter?.verified && amountOk && phoneOk && emailOk;
+  const kwh = disco ? estimateKwh(disco, value) : 0;
 
   const pay = async () => {
     setError('');
@@ -188,6 +189,7 @@ function BuyPage() {
       <SummaryRow label="Account name" value={meter?.verified ? meter.customer_name : undefined} />
       <div className="border-t border-white/[0.08] pt-3">
         <SummaryRow label="Amount" value={value > 0 ? formatCurrency(value) : undefined} strong />
+        {kwh > 0 ? <SummaryRow label="Estimated energy" value={`≈ ${formatKwh(kwh)}`} /> : null}
         {fee > 0 ? <p className="mt-1 text-right text-xs text-white/35">includes {formatCurrency(fee)} service charge</p> : null}
       </div>
     </dl>
@@ -276,8 +278,13 @@ function BuyPage() {
               value={amount}
               onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))}
               placeholder="0"
-              className={`${inputCls} pl-9 text-lg font-semibold`}
+              className={`${inputCls} pl-9 pr-28 text-lg font-semibold`}
             />
+            {kwh > 0 ? (
+              <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-zener-gold">
+                ≈ {formatKwh(kwh)}
+              </span>
+            ) : null}
           </div>
           <div className="mt-2.5 grid grid-cols-4 gap-2">
             {QUICK.map((q) => (
@@ -293,6 +300,11 @@ function BuyPage() {
               </button>
             ))}
           </div>
+          {kwh > 0 ? (
+            <p className="mt-2 text-xs text-white/35">
+              Estimate at ₦{(disco!.rate_kobo_per_kwh! / 100).toLocaleString('en-NG')}/kWh. Your DisCo sets the final units by your tariff band.
+            </p>
+          ) : null}
         </Field>
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -577,4 +589,19 @@ function DiscoLogo({ disco }: { disco: Disco }) {
       {disco.provider_code.slice(0, 5)}
     </span>
   );
+}
+
+// Mirrors the backend quote: the service fee comes off first, VAT is included
+// in the rest, and the remainder buys energy at the DisCo's rate.
+function estimateKwh(d: Disco, naira: number): number {
+  if (!d.rate_kobo_per_kwh || !Number.isFinite(naira) || naira <= 0) return 0;
+  const net = Math.round(naira * 100) - d.service_fee_kobo;
+  if (net <= 0) return 0;
+  const bps = d.vat_bps ?? 0;
+  const energyKobo = net - Math.floor((net * bps) / (10000 + bps));
+  return energyKobo / d.rate_kobo_per_kwh;
+}
+
+function formatKwh(kwh: number): string {
+  return `${kwh.toLocaleString('en-NG', { maximumFractionDigits: kwh < 10 ? 1 : 0 })} kWh`;
 }
