@@ -23,7 +23,7 @@ import {
   UserRound,
   Wallet,
 } from 'lucide-react';
-import QRCode from 'qrcode';
+import { brandedQr, brandedQrUrl } from './qr';
 import logo from '../assets/logo-icon-white.svg';
 import { ApiError, IS_PRODUCTION, account, api, guest, koboToNaira, nairaToKobo, setSignedOutHandler } from '../lib/api';
 import type { ApiMeter, Branding, Disco, GuestOrder, PublicMeter, User } from '../lib/api';
@@ -945,7 +945,7 @@ async function drawSticker(m: ApiMeter, link: string, brandName: string, logoUrl
   g.font = `800 50px ${font}`;
   g.fillText('Scan to buy electricity', W / 2, 270);
 
-  const qr = await loadImage(await QRCode.toDataURL(link, { margin: 0, width: 600, errorCorrectionLevel: 'M' }));
+  const qr = await brandedQr(link, 600, logoUrl);
   g.drawImage(qr, (W - 600) / 2, 330, 600, 600);
 
   g.font = `800 58px ui-monospace, SFMono-Regular, Menlo, monospace`;
@@ -968,7 +968,7 @@ function MeterQrDialog({ meter, onClose }: { meter: ApiMeter; onClose: () => voi
   const fileName = `${brand.display_name.toLowerCase()}-meter-${meter.meter_number}.png`;
 
   useEffect(() => {
-    QRCode.toDataURL(link, { margin: 1, width: 480, errorCorrectionLevel: 'M' }).then(setQr).catch(() => undefined);
+    brandedQrUrl(link, 480, brand.logo_url || logo).then(setQr).catch(() => undefined);
     drawSticker(meter, link, brand.display_name, brand.logo_url || logo).then(setSticker).catch(() => undefined);
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     document.addEventListener('keydown', esc);

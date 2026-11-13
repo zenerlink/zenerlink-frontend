@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { ArrowRight, ChevronDown, Eye, EyeOff, Loader2, Lock, Menu, QrCode, UserRound, X } from 'lucide-react';
-import QRCode from 'qrcode';
 import { ApiError, api, guest } from '../lib/api';
 import type { Disco, User } from '../lib/api';
 import { useBrand } from '../lib/brand';
 import familyPhoto from '../assets/photos/family-buying.jpg';
 import pylonsPhoto from '../assets/photos/pylons-sunset.jpg';
 import { href } from './links';
+import { brandedQrUrl } from './qr';
 import type { Nav, Prefill } from './links';
 
 // The public site (zenerlink.com). Quiet and technical: black, white type,
@@ -301,7 +301,7 @@ function StickerShot() {
   const brand = useBrand();
   const [qr, setQr] = useState('');
   useEffect(() => {
-    QRCode.toDataURL(window.location.origin, { margin: 0, width: 320 }).then(setQr).catch(() => undefined);
+    brandedQrUrl(window.location.origin, 320).then(setQr).catch(() => undefined);
   }, []);
   return (
     <div className="mx-auto w-60 bg-white p-6 text-center text-black sm:w-64">
@@ -598,15 +598,25 @@ export function LoginPage({ onDone, prefill, nav }: { onDone: (u: User) => void;
   ];
 
   return (
-    <div className="relative flex min-h-screen flex-col overflow-hidden bg-black text-white">
-      <header className="mx-auto flex h-[72px] w-full max-w-6xl items-center justify-between px-5 sm:px-8">
+    <div className="min-h-screen bg-black text-white lg:grid lg:grid-cols-[1fr_minmax(480px,0.9fr)]">
+      {/* Photo side: the grid at sunset, our own image and colour. */}
+      <aside className="relative h-48 overflow-hidden sm:h-64 lg:sticky lg:top-0 lg:h-screen">
+        <img src={pylonsPhoto} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/30" />
+        <div className="absolute inset-x-0 bottom-0 hidden p-12 lg:block">
+          <p className="max-w-sm text-[30px] font-bold leading-[1.12] tracking-tight">Every DisCo. One account. Tokens in seconds.</p>
+        </div>
+      </aside>
+
+      <div className="relative flex min-h-[calc(100vh-12rem)] flex-col sm:min-h-[calc(100vh-16rem)] lg:min-h-screen">
+      <header className="flex h-[72px] w-full items-center justify-between px-5 sm:px-10">
         <Wordmark onClick={() => nav('/')} />
         <button type="button" onClick={() => nav('/')} className="text-[13px] text-white/50 hover:text-white">
           Back to site
         </button>
       </header>
 
-      <main className="relative z-10 flex flex-1 items-center justify-center px-5 pb-40 pt-6">
+      <main className="flex flex-1 items-center justify-center px-5 py-10 sm:px-10">
         <form onSubmit={(e) => void submit(e)} noValidate className="w-full max-w-[380px]">
           <ol className="flex gap-6 font-mono text-[11px] uppercase tracking-[0.18em]">
             {steps.map(([k, label], i) => (
@@ -701,11 +711,7 @@ export function LoginPage({ onDone, prefill, nav }: { onDone: (u: User) => void;
         </form>
       </main>
 
-      {/* The same 50 Hz trace as the landing page, along the bottom edge. */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-16 h-28">
-        <SineTrace />
-      </div>
-      <footer className="relative z-10 mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-5 pb-6 text-[12px] text-white/35 sm:px-8">
+      <footer className="flex w-full flex-wrap items-center justify-between gap-3 px-5 pb-6 text-[12px] text-white/35 sm:px-10">
         <span>&copy; {new Date().getFullYear()} {brand.display_name}</span>
         <span className="flex gap-5">
           <button type="button" onClick={() => nav('/#how')} className="hover:text-white">How it works</button>
@@ -713,6 +719,7 @@ export function LoginPage({ onDone, prefill, nav }: { onDone: (u: User) => void;
           <button type="button" onClick={() => nav('/#faq')} className="hover:text-white">Help</button>
         </span>
       </footer>
+      </div>
     </div>
   );
 }
