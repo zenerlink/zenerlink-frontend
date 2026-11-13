@@ -7,6 +7,7 @@ import familyPhoto from '../assets/photos/family-buying.jpg';
 import pylonsPhoto from '../assets/photos/pylons-sunset.jpg';
 import { href } from './links';
 import { brandedQrUrl } from './qr';
+import { discoLogo } from '../assets/discos';
 import { DISCOS, ELECTRICITY, FAQS, HOME, LOGIN, applyPageSeo, discoPage } from '../seo/site';
 import type { DiscoSeo } from '../seo/site';
 import type { Nav, Prefill } from './links';
@@ -225,8 +226,10 @@ function SineTrace() {
 function HeroBuyForm({ discos, nav, initial }: { discos: Disco[]; nav: Nav; initial?: string }) {
   const [disco, setDisco] = useState('');
   const [meter, setMeter] = useState('');
+  // The built-in DisCo list stands in until (or if) the API answers.
+  const list = discos.length ? discos.map((d) => ({ code: d.provider_code, name: d.provider_name })) : DISCOS.map((d) => ({ code: d.code, name: d.name }));
   const chosen =
-    disco || discos.find((d) => d.provider_code === (initial ?? 'IKEDC'))?.provider_code || discos[0]?.provider_code || '';
+    disco || list.find((d) => d.code === (initial ?? 'IKEDC'))?.code || list[0]?.code || '';
   const ok = !!chosen && meter.length >= 6;
   return (
     <form
@@ -244,10 +247,9 @@ function HeroBuyForm({ discos, nav, initial }: { discos: Disco[]; nav: Nav; init
           onChange={(e) => setDisco(e.target.value)}
           className="h-12 w-full appearance-none rounded-md border border-white/20 bg-black/40 pl-4 pr-10 text-[15px] font-medium text-white outline-none backdrop-blur focus:border-white/60"
         >
-          {discos.length ? null : <option value="">Loading DisCos…</option>}
-          {discos.map((d) => (
-            <option key={d.provider_code} value={d.provider_code} className="bg-[#111]">
-              {d.provider_name}
+          {list.map((d) => (
+            <option key={d.code} value={d.code} className="bg-[#111]">
+              {d.name}
             </option>
           ))}
         </select>
@@ -501,7 +503,7 @@ export function Landing({ nav, signedIn, focus, index = false }: { nav: Nav; sig
                     }}
                     className={`group flex items-center gap-3 border-b border-white/[0.07] py-4 ${focus?.code === s.code ? 'text-zener-gold' : ''}`}
                   >
-                    {live ? <DiscoMark disco={live} /> : <span className="h-7 w-7 shrink-0 rounded bg-white/[0.06]" />}
+                    <DiscoMark code={s.code} logoUrl={live?.logo_url} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[14px] text-white/80 group-hover:text-white">{s.name}</span>
                       <span className="block truncate text-[12px] text-white/35">{s.areas}</span>
@@ -560,13 +562,14 @@ export function Landing({ nav, signedIn, focus, index = false }: { nav: Nav; sig
   );
 }
 
-function DiscoMark({ disco }: { disco: Disco }) {
+function DiscoMark({ code, logoUrl }: { code: string; logoUrl?: string }) {
   const [broken, setBroken] = useState(false);
-  if (disco.logo_url && !broken) {
-    return <img src={disco.logo_url} alt="" loading="lazy" onError={() => setBroken(true)} className="h-7 w-7 shrink-0 rounded bg-white object-contain" />;
+  const src = discoLogo(code, logoUrl);
+  if (src && !broken) {
+    return <img src={src} alt="" onError={() => setBroken(true)} className="h-9 w-9 shrink-0 rounded bg-white object-contain" />;
   }
   return (
-    <span className="grid h-7 w-7 shrink-0 place-items-center rounded bg-white/[0.08] text-[8px] font-bold text-white/60">{disco.provider_code.slice(0, 5)}</span>
+    <span className="grid h-9 w-9 shrink-0 place-items-center rounded bg-white/[0.08] text-[9px] font-bold text-white/70">{code.slice(0, 5)}</span>
   );
 }
 

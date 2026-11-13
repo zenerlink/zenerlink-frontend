@@ -24,6 +24,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import { brandedQr, brandedQrUrl } from './qr';
+import { discoLogo } from '../assets/discos';
 import logo from '../assets/logo-icon-white.svg';
 import { ApiError, IS_PRODUCTION, account, api, guest, koboToNaira, nairaToKobo, setSignedOutHandler } from '../lib/api';
 import type { ApiMeter, Branding, Disco, GuestOrder, PublicMeter, User } from '../lib/api';
@@ -1561,10 +1562,11 @@ function DiscoPicker({ discos, value, onChange }: { discos: Disco[]; value: stri
 // missing, so fall back to the DisCo code.
 function DiscoLogo({ disco }: { disco: Disco }) {
   const [broken, setBroken] = useState(false);
-  if (disco.logo_url && !broken) {
+  const src = discoLogo(disco.provider_code, disco.logo_url);
+  if (src && !broken) {
     return (
       <img
-        src={disco.logo_url}
+        src={src}
         alt=""
         loading="lazy"
         onError={() => setBroken(true)}
