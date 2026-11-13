@@ -42,6 +42,19 @@ textarea {
   font: inherit;
 }
 
+/* iOS zooms into any field with text under 16px and stays zoomed, which
+   makes the page pan sideways. Keep fields at 16px on phones. */
+@media (max-width: 767px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* No double-tap zoom or tap delay on buttons and links. */
+a, button, input, select, textarea, label { touch-action: manipulation; }
+
 * {
   scrollbar-width: thin;
   scrollbar-color: #3a2a1b #0b0b0b;
