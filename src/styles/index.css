@@ -46,3 +46,11 @@ textarea {
   scrollbar-width: thin;
   scrollbar-color: #3a2a1b #0b0b0b;
 }
+
+/* Static page content written at build time for search engines; React
+   replaces it on load, so keep it plain and readable. */
+.seo-static { max-width: 720px; margin: 0 auto; padding: 120px 20px 60px; color: rgba(255, 255, 255, 0.75); line-height: 1.6; }
+.seo-static h1 { color: #fff; font-size: 44px; line-height: 1.05; font-weight: 700; margin: 0 0 16px; }
+.seo-static h2 { color: #fff; font-size: 20px; margin: 40px 0 8px; }
+.seo-static a { color: #fff; }
+.seo-static nav a { margin-right: 16px; }

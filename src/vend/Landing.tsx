@@ -7,6 +7,8 @@ import familyPhoto from '../assets/photos/family-buying.jpg';
 import pylonsPhoto from '../assets/photos/pylons-sunset.jpg';
 import { href } from './links';
 import { brandedQrUrl } from './qr';
+import { DISCOS, ELECTRICITY, FAQS, HOME, LOGIN, applyPageSeo, discoPage } from '../seo/site';
+import type { DiscoSeo } from '../seo/site';
 import type { Nav, Prefill } from './links';
 
 // The public site (zenerlink.com). Quiet and technical: black, white type,
@@ -220,10 +222,11 @@ function SineTrace() {
   );
 }
 
-function HeroBuyForm({ discos, nav }: { discos: Disco[]; nav: Nav }) {
+function HeroBuyForm({ discos, nav, initial }: { discos: Disco[]; nav: Nav; initial?: string }) {
   const [disco, setDisco] = useState('');
   const [meter, setMeter] = useState('');
-  const chosen = disco || discos.find((d) => d.provider_code === 'IKEDC')?.provider_code || discos[0]?.provider_code || '';
+  const chosen =
+    disco || discos.find((d) => d.provider_code === (initial ?? 'IKEDC'))?.provider_code || discos[0]?.provider_code || '';
   const ok = !!chosen && meter.length >= 6;
   return (
     <form
@@ -313,18 +316,16 @@ function StickerShot() {
   );
 }
 
-const FAQS: [string, string][] = [
-  ['Which meters can I recharge?', 'Any prepaid (and postpaid) meter on the DisCos listed on this page. Enter the meter number and we confirm the name on it with your DisCo before you pay.'],
-  ['How fast is my token?', 'Usually seconds after payment. If your DisCo is slow the order shows as delayed and we keep trying. You are never charged twice, and failed purchases are refunded.'],
-  ['How do I pay?', 'By card, bank transfer or USSD through a secure checkout, or from your Zenerlink wallet in one tap.'],
-  ['Why are my units different from the estimate?', 'Your DisCo calculates the final units from your tariff band. The units on your receipt are the DisCo’s own figure.'],
-  ['Can I pay for someone else’s meter?', 'Yes. Enter their meter number, or scan the QR sticker on their meter. We show the name on the meter before you pay.'],
-];
 
-export function Landing({ nav, signedIn }: { nav: Nav; signedIn: boolean }) {
+export function Landing({ nav, signedIn, focus, index = false }: { nav: Nav; signedIn: boolean; focus?: DiscoSeo; index?: boolean }) {
   const brand = useBrand();
   const discos = useDiscos();
   useHashScroll();
+  useEffect(() => {
+    applyPageSeo(focus ? discoPage(focus) : index ? ELECTRICITY : HOME);
+    if (index) window.setTimeout(() => document.getElementById('discos')?.scrollIntoView(), 50);
+  }, [focus, index]);
+  const short = focus ? (focus.name.match(/\(([^)]+)\)/)?.[1] ?? focus.name) : '';
   const year = new Date().getFullYear();
 
   return (
@@ -346,11 +347,17 @@ export function Landing({ nav, signedIn }: { nav: Nav; signedIn: boolean }) {
           </>
         )}
         <div className="relative mx-auto w-full max-w-6xl px-5 pb-20 pt-36 sm:px-8 lg:pb-24">
-          <h1 className="max-w-2xl text-[46px] font-bold leading-[1.02] tracking-tight sm:text-[68px] lg:text-[80px]">Power, on&nbsp;demand.</h1>
+          {focus ? (
+            <h1 className="max-w-3xl text-[42px] font-bold leading-[1.04] tracking-tight sm:text-[60px] lg:text-[72px]">Buy {short} electricity, in&nbsp;seconds.</h1>
+          ) : (
+            <h1 className="max-w-2xl text-[46px] font-bold leading-[1.02] tracking-tight sm:text-[68px] lg:text-[80px]">Power, on&nbsp;demand.</h1>
+          )}
           <p className="mt-6 max-w-md text-[17px] leading-7 text-white/65">
-            Recharge any prepaid meter on any DisCo in Nigeria. Pay by card, transfer or USSD. Your token arrives in seconds.
+            {focus
+              ? `Recharge your ${focus.name} prepaid meter. Pay by card, transfer or USSD and your token arrives in seconds. Serving ${focus.areas}.`
+              : 'Recharge any prepaid meter on any DisCo in Nigeria. Pay by card, transfer or USSD. Your token arrives in seconds.'}
           </p>
-          <HeroBuyForm discos={discos} nav={nav} />
+          <HeroBuyForm discos={discos} nav={nav} initial={focus?.code} />
           <p className="mt-5 text-sm text-white/45">
             {signedIn ? (
               <button type="button" onClick={() => nav('/')} className="text-white/80 underline underline-offset-4 hover:text-white">Go to your account</button>
@@ -478,21 +485,35 @@ export function Landing({ nav, signedIn }: { nav: Nav; signedIn: boolean }) {
       </Panel>
 
       {/* DisCos */}
-      {discos.length ? (
-        <section className="border-t border-white/[0.07]">
-          <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8">
-            <h2 className="text-xl font-bold tracking-tight">Works with</h2>
-            <ul className="mt-6 grid grid-cols-2 gap-x-8 sm:grid-cols-3 lg:grid-cols-4">
-              {discos.map((d) => (
-                <li key={d.provider_code} className="flex items-center gap-3 border-b border-white/[0.07] py-4">
-                  <DiscoMark disco={d} />
-                  <span className="truncate text-[14px] text-white/70">{d.provider_name}</span>
+      <section id="discos" className="scroll-mt-24 border-t border-white/[0.07]">
+        <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8">
+          <h2 className="text-xl font-bold tracking-tight">Buy electricity for your DisCo</h2>
+          <ul className="mt-6 grid grid-cols-1 gap-x-8 sm:grid-cols-2 lg:grid-cols-3">
+            {DISCOS.map((s) => {
+              const live = discos.find((d) => d.provider_code === s.code);
+              return (
+                <li key={s.code}>
+                  <a
+                    href={href(`/electricity/${s.slug}`)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      nav(`/electricity/${s.slug}`);
+                    }}
+                    className={`group flex items-center gap-3 border-b border-white/[0.07] py-4 ${focus?.code === s.code ? 'text-zener-gold' : ''}`}
+                  >
+                    {live ? <DiscoMark disco={live} /> : <span className="h-7 w-7 shrink-0 rounded bg-white/[0.06]" />}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[14px] text-white/80 group-hover:text-white">{s.name}</span>
+                      <span className="block truncate text-[12px] text-white/35">{s.areas}</span>
+                    </span>
+                    <ArrowRight size={15} className="shrink-0 text-white/30 transition group-hover:translate-x-0.5 group-hover:text-white" />
+                  </a>
                 </li>
-              ))}
-            </ul>
-          </div>
-        </section>
-      ) : null}
+              );
+            })}
+          </ul>
+        </div>
+      </section>
 
       {/* FAQ */}
       <section id="faq" className="scroll-mt-24 border-t border-white/[0.07]">
@@ -556,6 +577,7 @@ function DiscoMark({ disco }: { disco: Disco }) {
 const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Network error. Check your connection and try again.');
 
 export function LoginPage({ onDone, prefill, nav }: { onDone: (u: User) => void; prefill: Prefill; nav: Nav }) {
+  useEffect(() => applyPageSeo(LOGIN), []);
   const brand = useBrand();
   const [step, setStep] = useState<'email' | 'password'>('email');
   const [email, setEmail] = useState('');

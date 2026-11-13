@@ -31,6 +31,7 @@ import { BrandContext, fallbackBranding, useBrand } from '../lib/brand';
 import { applyBranding } from '../lib/theme';
 import { formatCurrency } from '../lib/format';
 import { Landing, LoginPage } from './Landing';
+import { discoBySlug } from '../seo/site';
 import { buyLink, href, readPrefill } from './links';
 import type { Nav, Prefill } from './links';
 
@@ -121,6 +122,10 @@ export default function VendRoot() {
         <OrderView load={() => guest.get(orderMatch[1], key)} />
       </Split>
     );
+  } else if (url.pathname === '/electricity' || url.pathname.startsWith('/electricity/')) {
+    // Public DisCo pages (search landing pages), for everyone.
+    const focus = discoBySlug(url.pathname.split('/')[2] ?? '');
+    page = <Landing nav={nav} signedIn={!!user} focus={focus} index={!focus} />;
   } else if (checking) {
     page = <div className="grid min-h-screen place-items-center"><Loader2 className="animate-spin text-zener-gold" /></div>;
   } else if (!user) {
