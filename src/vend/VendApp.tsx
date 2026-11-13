@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import logo from '../assets/logo-icon-white.svg';
-import { AppLogo } from '../components/ui/AppLogo';
+import { Wordmark } from '../components/ui/AppLogo';
 import { ApiError, IS_PRODUCTION, account, api, guest, koboToNaira, nairaToKobo, setSignedOutHandler } from '../lib/api';
 import type { ApiMeter, Branding, Disco, GuestOrder, PublicMeter, User } from '../lib/api';
 import { BrandContext, fallbackBranding, useBrand } from '../lib/brand';
@@ -179,8 +179,7 @@ function Split({ aside, children }: { aside?: React.ReactNode; children: React.R
       <aside className="relative flex flex-col overflow-hidden border-b border-white/[0.06] px-6 py-6 lg:min-h-screen lg:border-b-0 lg:border-r lg:px-12 lg:py-10">
         <div className="pointer-events-none absolute -left-40 -top-40 h-[28rem] w-[28rem] rounded-full bg-zener-gold/[0.10] blur-3xl" />
         <a href={href('/')} className="relative flex items-center gap-3">
-          <AppLogo size={22} />
-          <span className="text-[13px] font-black tracking-[0.3em]">{brand.display_name.toUpperCase()}</span>
+          <Wordmark fontSize={17} />
         </a>
         <div className="relative mt-8 flex-1 lg:mt-16">{aside}</div>
         <footer className="relative mt-10 hidden items-center justify-between text-xs text-white/35 lg:flex">
@@ -368,8 +367,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-[rgb(var(--zener-background))]/90 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
           <a {...link('/')} className="flex items-center gap-3">
-            <AppLogo size={22} />
-            <span className="hidden text-[13px] font-black tracking-[0.3em] sm:inline">{brand.display_name.toUpperCase()}</span>
+            <Wordmark fontSize={17} />
           </a>
           <div className="flex items-center gap-2 sm:gap-3">
             <a
@@ -988,7 +986,7 @@ const loadImage = (src: string) =>
   });
 
 // Draws the printable sticker (900x1200) and returns it as a PNG data URL.
-async function drawSticker(m: ApiMeter, link: string, brandName: string, logoUrl: string): Promise<string> {
+async function drawSticker(m: ApiMeter, link: string, brandName: string, logoUrl: string, merge: boolean): Promise<string> {
   const W = 900;
   const H = 1200;
   const c = document.createElement('canvas');
@@ -1003,19 +1001,30 @@ async function drawSticker(m: ApiMeter, link: string, brandName: string, logoUrl
   g.fillStyle = '#d4943a';
   g.fillRect(0, 170, W, 10);
 
-  let x = W / 2;
+  // Wordmark, centred: the Zenerlink logo stands in for the name's "Z".
+  const name = brandName.toUpperCase();
+  const merged = merge && name.startsWith('Z');
+  const text = (merged ? name.slice(1) : name).split('').join(String.fromCharCode(8202, 8202));
+  g.font = `900 52px ${font}`;
+  g.textBaseline = 'alphabetic';
+  const markH = merged ? 38 : 60;
+  const gap = merged ? 16 : 28;
+  let logo: HTMLImageElement | null = null;
   try {
-    const logo = await loadImage(logoUrl);
-    g.drawImage(logo, 0, 0, logo.width || 64, logo.height || 64, 70, 53, 64, 64);
-    x = 150;
+    logo = await loadImage(logoUrl);
   } catch {
     /* sticker still works without the logo */
   }
+  const total = (logo ? markH + gap : 0) + g.measureText(text).width;
+  let x = (W - total) / 2;
+  if (logo) {
+    g.drawImage(logo, x, 106 - markH, markH * (logo.width / logo.height || 1), markH);
+    x += markH + gap;
+  }
   g.fillStyle = '#ffffff';
-  g.font = `900 46px ${font}`;
+  g.textAlign = 'left';
+  g.fillText(text, x, 106);
   g.textBaseline = 'middle';
-  g.textAlign = x === W / 2 ? 'center' : 'left';
-  g.fillText(brandName.toUpperCase().split('').join(String.fromCharCode(8202)), x, 87);
 
   g.textAlign = 'center';
   g.fillStyle = '#0b0b0b';
@@ -1046,7 +1055,7 @@ function MeterQrDialog({ meter, onClose }: { meter: ApiMeter; onClose: () => voi
 
   useEffect(() => {
     QRCode.toDataURL(link, { margin: 1, width: 480, errorCorrectionLevel: 'M' }).then(setQr).catch(() => undefined);
-    drawSticker(meter, link, brand.display_name, brand.logo_url || logo).then(setSticker).catch(() => undefined);
+    drawSticker(meter, link, brand.display_name, brand.logo_url || logo, !brand.logo_url).then(setSticker).catch(() => undefined);
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     document.addEventListener('keydown', esc);
     return () => document.removeEventListener('keydown', esc);

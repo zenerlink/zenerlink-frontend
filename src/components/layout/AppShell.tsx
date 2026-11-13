@@ -1,6 +1,6 @@
 import type { ElementType, ReactNode } from 'react';
 import { Activity, Building2, ChevronDown, Home, LayoutGrid, LogOut, Repeat, UserRound, Wallet } from 'lucide-react';
-import { AppLogo } from '../ui/AppLogo';
+import { Wordmark } from '../ui/AppLogo';
 import { Button } from '../ui/Button';
 import { StatusDot } from '../ui/StatusDot';
 import { formatCurrency } from '../../lib/format';
@@ -53,10 +53,9 @@ export function AppShell({
     <div className="min-h-screen lg:grid lg:grid-cols-[260px_1fr]">
       <aside className="hidden border-r border-zener-border bg-black/55 px-4 py-5 backdrop-blur lg:block">
         <div className="mb-8 flex items-center gap-3 px-2">
-          <AppLogo size={28} />
           <div>
-            <p className="text-sm font-black tracking-[0.28em]">{brandName}</p>
-            <p className="text-xs text-white/42">Electricity OS</p>
+            <Wordmark fontSize={16} />
+            <p className="mt-1 text-xs text-white/42">Electricity OS</p>
           </div>
         </div>
         <div className="mb-5 rounded-lg border border-zener-border bg-white/[0.025] p-4 text-center">
@@ -91,8 +90,7 @@ export function AppShell({
       <main className="min-w-0">
         <header className="sticky top-0 z-20 flex items-center justify-between border-b border-zener-border bg-black/70 px-4 py-3 backdrop-blur lg:px-8">
           <div className="flex items-center gap-3 lg:hidden">
-            <AppLogo size={24} />
-            <span className="text-xs font-black tracking-[0.24em]">{brandName}</span>
+            <Wordmark fontSize={15} />
           </div>
           <div className="hidden lg:block">
             <p className="text-xs font-bold uppercase tracking-[0.22em] text-white/35">Client workspace</p>
