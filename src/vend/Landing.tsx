@@ -4,6 +4,8 @@ import QRCode from 'qrcode';
 import { ApiError, api, guest } from '../lib/api';
 import type { Disco, User } from '../lib/api';
 import { useBrand } from '../lib/brand';
+import familyPhoto from '../assets/photos/family-buying.jpg';
+import pylonsPhoto from '../assets/photos/pylons-sunset.jpg';
 import { href } from './links';
 import type { Nav, Prefill } from './links';
 
@@ -294,26 +296,7 @@ function Panel({ id, title, body, children, cta, reverse = false }: {
   );
 }
 
-// Product shots, drawn flat: the account screen and a meter sticker.
-function AccountShot() {
-  return (
-    <div className="mx-auto w-full max-w-sm rounded-[28px] border border-white/[0.1] bg-[#0b0b0b] p-5">
-      <div className="flex items-center justify-between text-[11px] text-white/40">
-        <span className="font-bold tracking-[0.3em] text-white/70">ZENERLINK</span>
-        <span>Wallet ₦12,500</span>
-      </div>
-      <p className="mt-8 text-[13px] text-white/45">Ikeja Electric · 0101 2345 678</p>
-      <p className="mt-1 text-3xl font-bold tracking-tight">₦5,000</p>
-      <p className="mt-1 text-[13px] text-zener-gold">≈ 25 kWh</p>
-      <div className="mt-6 border-t border-white/[0.08] pt-5">
-        <p className="text-[11px] text-white/40">Token</p>
-        <p className="mt-1.5 font-mono text-[17px] tracking-wider text-white">2636 2054 4059 8275 7802</p>
-      </div>
-      <div className="mt-6 h-11 rounded-md bg-white text-center text-[13px] font-bold leading-[44px] text-black">Buy again</div>
-    </div>
-  );
-}
-
+// Product shot, drawn flat: a meter sticker.
 function StickerShot() {
   const brand = useBrand();
   const [qr, setQr] = useState('');
@@ -419,6 +402,21 @@ export function Landing({ nav, signedIn }: { nav: Nav; signedIn: boolean }) {
         </div>
       </section>
 
+      {/* Full-bleed photo: the grid at sunset */}
+      <section className="relative isolate overflow-hidden">
+        <img src={pylonsPhoto} alt="High-voltage transmission towers at sunset" className="absolute inset-0 -z-10 h-full w-full object-cover" />
+        <div className="absolute inset-0 -z-10 bg-gradient-to-r from-black/85 via-black/45 to-black/10" />
+        <div className="mx-auto flex min-h-[78vh] max-w-6xl flex-col justify-end px-5 py-20 sm:px-8 lg:min-h-[86vh] lg:py-28">
+          <h2 className="max-w-xl text-[36px] font-bold leading-[1.06] tracking-tight sm:text-[52px]">The grid is big. Buying from it should be simple.</h2>
+          <p className="mt-5 max-w-md text-[16px] leading-7 text-white/75">
+            Every DisCo, one place to pay. We talk to your DisCo for you and hand you the token.
+          </p>
+          <div className="mt-8">
+            <a href="#buy" className={primaryBtn}>Buy electricity</a>
+          </div>
+        </div>
+      </section>
+
       <Panel
         title="One account for every meter you pay for."
         body="Home, the shop, your parents’ flat. Save each meter once, keep a wallet balance, and find any token again in your history."
@@ -428,7 +426,16 @@ export function Landing({ nav, signedIn }: { nav: Nav; signedIn: boolean }) {
           </button>
         }
       >
-        <AccountShot />
+        <figure className="relative">
+          <img src={familyPhoto} alt="A family buying electricity on a laptop with a bank card" className="aspect-[4/3] w-full rounded-xl object-cover" />
+          <figcaption className="absolute -bottom-6 left-4 right-4 rounded-lg border border-white/[0.1] bg-black/85 p-4 backdrop-blur sm:left-auto sm:right-[-1.5rem] sm:w-72">
+            <span className="flex items-center justify-between text-[11px] text-white/45">
+              <span>Ikeja Electric · 0101 2345 678</span>
+              <span className="text-zener-gold">≈ 25 kWh</span>
+            </span>
+            <span className="mt-2 block font-mono text-[15px] tracking-wider text-white">2636 2054 4059 8275 7802</span>
+          </figcaption>
+        </figure>
       </Panel>
 
       <Panel
