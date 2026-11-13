@@ -202,7 +202,7 @@ export const api = {
 };
 
 // ---- Guest checkout (production buy-only site) ----
-export type Disco = { provider_code: string; provider_name: string; min_purchase_kobo: number; max_purchase_kobo: number; service_fee_kobo: number };
+export type Disco = { provider_code: string; provider_name: string; logo_url?: string; min_purchase_kobo: number; max_purchase_kobo: number; service_fee_kobo: number };
 export type PublicMeter = { verified: boolean; customer_name: string; address: string; meter_type: string; message?: string };
 export type GuestOrder = {
   id: string;

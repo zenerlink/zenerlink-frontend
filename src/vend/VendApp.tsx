@@ -507,7 +507,7 @@ function DiscoPicker({ discos, value, onChange }: { discos: Disco[]; value: stri
       >
         {selected ? (
           <span className="flex items-center gap-3">
-            <DiscoBadge code={selected.provider_code} />
+            <DiscoLogo disco={selected} />
             <span>{selected.provider_name}</span>
           </span>
         ) : (
@@ -542,7 +542,7 @@ function DiscoPicker({ discos, value, onChange }: { discos: Disco[]; value: stri
                   className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm hover:bg-white/[0.05]"
                 >
                   <span className="flex items-center gap-3">
-                    <DiscoBadge code={d.provider_code} />
+                    <DiscoLogo disco={d} />
                     {d.provider_name}
                   </span>
                   {d.provider_code === value ? <Check size={16} className="text-zener-gold" /> : null}
@@ -557,10 +557,24 @@ function DiscoPicker({ discos, value, onChange }: { discos: Disco[]; value: stri
   );
 }
 
-function DiscoBadge({ code }: { code: string }) {
+// DisCo logo from the vending provider's catalogue; some provider images are
+// missing, so fall back to the DisCo code.
+function DiscoLogo({ disco }: { disco: Disco }) {
+  const [broken, setBroken] = useState(false);
+  if (disco.logo_url && !broken) {
+    return (
+      <img
+        src={disco.logo_url}
+        alt=""
+        loading="lazy"
+        onError={() => setBroken(true)}
+        className="h-7 w-7 shrink-0 rounded-md bg-white object-contain"
+      />
+    );
+  }
   return (
-    <span className="grid h-7 min-w-[44px] place-items-center rounded-md bg-white/[0.07] px-1.5 text-[10px] font-bold tracking-wide text-white/70">
-      {code}
+    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-white/[0.07] text-[8px] font-bold tracking-tight text-white/70">
+      {disco.provider_code.slice(0, 5)}
     </span>
   );
 }
