@@ -6,7 +6,7 @@ export const SITE_URL = 'https://www.zenerlink.com';
 export const SITE_NAME = 'Zenerlink';
 export const COMPANY = 'Zieon Energies Ltd';
 export const COMPANY_RC = '9519634';
-export const SUPPORT_EMAIL = 'support@zieonenergies.com';
+export const SUPPORT_EMAIL = 'support@zenerlink.com';
 
 export type DiscoSeo = {
   code: string; // provider code used by the API

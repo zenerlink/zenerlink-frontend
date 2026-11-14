@@ -6,7 +6,7 @@ import type { PageSeo } from './site';
 const SITE_NAME = 'Zenerlink';
 const COMPANY = 'Zieon Energies Ltd';
 const COMPANY_RC = '9519634';
-const SUPPORT_EMAIL = 'support@zieonenergies.com';
+const SUPPORT_EMAIL = 'support@zenerlink.com';
 
 export const COMPANY_ADDRESS = '42, Crib Sankara, Banana Island, Jahi, Abuja, FCT, Nigeria';
 export const LEGAL_UPDATED = '13 November 2026';
