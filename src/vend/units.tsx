@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, Copy, Gift, Loader2, Mail, Plus, Share2, X, Zap } from 'lucide-react';
+import { Check, Copy, Gift, Loader2, Mail, Plus, Share2, X, Gauge } from 'lucide-react';
 import { ApiError, api, guest, koboToNaira, nairaToKobo, units } from '../lib/api';
 import type { ApiMeter, Disco, UnitGift, UnitsSummary } from '../lib/api';
 import { useBrand } from '../lib/brand';
@@ -150,7 +150,7 @@ export function UnitsPage({ nav, walletKobo, refreshWallet }: Props) {
             <h2 className="text-base font-bold">How it works</h2>
             <ul className="mt-3 space-y-2.5 text-sm text-white/55">
               <li className="flex gap-2.5"><Plus size={16} className="mt-0.5 shrink-0 text-zener-gold" /> Add units from your wallet. They don't expire.</li>
-              <li className="flex gap-2.5"><Zap size={16} className="mt-0.5 shrink-0 text-zener-gold" /> Load any amount to a meter: you get a fresh token straight away.</li>
+              <li className="flex gap-2.5"><Gauge size={16} className="mt-0.5 shrink-0 text-zener-gold" /> Load any amount to a meter: you get a fresh token straight away.</li>
               <li className="flex gap-2.5"><Gift size={16} className="mt-0.5 shrink-0 text-zener-gold" /> Send units by link or QR. They load them to their own meter. Unclaimed gifts come back after 30 days.</li>
             </ul>
           </section>
@@ -366,7 +366,7 @@ function LoadUnits({ data, meters, discos, nav, onAdd }: { data: UnitsSummary; m
       {kobo > data.balance_kobo ? <p className="text-sm text-zener-danger">You have {naira(data.balance_kobo)} saved.</p> : null}
       {error ? <ErrorBox text={error} /> : null}
       <button type="submit" disabled={!ready} className={primaryBtn}>
-        {busy ? <Loader2 size={17} className="animate-spin" /> : <Zap size={17} />} Get a token{kobo ? ` for ${naira(kobo)}` : ''}
+        {busy ? <Loader2 size={17} className="animate-spin" /> : <Gauge size={17} />} Get a token{kobo ? ` for ${naira(kobo)}` : ''}
       </button>
     </form>
   );
@@ -609,7 +609,7 @@ export function GiftPage({ code, nav }: { code: string; nav: Nav }) {
             <Check size={16} /> It's in your saved units.
           </p>
           <button type="button" onClick={() => nav('/units?load=1')} className={primaryBtn}>
-            <Zap size={17} /> Load it to my meter
+            <Gauge size={17} /> Load it to my meter
           </button>
         </div>
       ) : gift.status === 'open' ? (

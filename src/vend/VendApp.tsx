@@ -31,7 +31,7 @@ import {
   Tv,
   UserRound,
   Wallet,
-  Zap,
+  BatteryCharging,
 } from 'lucide-react';
 import { brandedQr, brandedQrUrl } from './qr';
 import { ScanDialog } from './scan';
@@ -291,7 +291,7 @@ const NAV: [string, string, (p: { size?: number }) => React.ReactNode][] = [
   ['/transactions', 'Transactions', Receipt],
   ['/meters', 'My meters', Gauge],
   ['/wallet', 'Wallet', Wallet],
-  ['/units', 'Saved units', Zap],
+  ['/units', 'Saved units', BatteryCharging],
   ['/profile', 'Profile', UserRound],
   ['/password', 'Change password', KeyRound],
   ['/help', 'Help', LifeBuoy],
@@ -2606,7 +2606,7 @@ function WalletPage({ funded }: { funded: boolean }) {
 
           <section className={`${card} flex items-center gap-4 p-5`}>
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-zener-gold/15 text-zener-gold">
-              <Zap size={18} />
+              <BatteryCharging size={19} />
             </span>
             <span className="min-w-0 flex-1">
               <span className="block text-sm font-bold">Saved units</span>
