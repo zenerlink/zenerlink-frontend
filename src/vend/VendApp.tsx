@@ -20,6 +20,7 @@ import {
   Printer,
   QrCode,
   Share2,
+  ShieldCheck,
   Smartphone,
   X,
   Receipt,
@@ -34,6 +35,9 @@ import {
 import { brandedQr, brandedQrUrl } from './qr';
 import { ScanDialog } from './scan';
 import { ConfirmHost, askConfirm } from './confirm';
+import { ErrorBox, Field, PageTitle, Spinner, actionBtn, card, inputCls, message, naira, shortDate } from './kit';
+import { MissingPaymentDialog, WithdrawCard } from './money';
+import { StaffPage, isStaff } from './staff';
 import type { ScanResult } from './scan';
 import { discoLogo } from '../assets/discos';
 import { BILL_LOGOS } from '../assets/bills';
@@ -56,12 +60,8 @@ import type { Nav, Prefill } from './links';
 // sign-up, then an account with a wallet, a buy form, transactions, saved
 // meters and profile. Signed-out pages use the full-screen split layout.
 
-const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Network error. Check your connection and try again.');
 const tokenGroups = (t: string) => t.replace(/(\d{4})(?=\d)/g, '$1 ').split(' ');
-const naira = (kobo: number) => formatCurrency(koboToNaira(kobo));
 const QUICK = [1000, 2000, 5000, 10000];
-const shortDate = (iso: string) =>
-  new Date(iso).toLocaleString('en-NG', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 // Signed-in state shared by every account page.
 type AccountCtx = {
@@ -191,6 +191,8 @@ export default function VendRoot() {
       <PasswordPage />
     ) : p.startsWith('/help') ? (
       <HelpPage />
+    ) : p.startsWith('/staff') && isStaff(user.role) ? (
+      <StaffPage />
     ) : p.startsWith('/airtime') ? (
       <BillsPage kind="phone" />
     ) : p.startsWith('/tv') ? (
@@ -378,6 +380,9 @@ function Shell({ children }: { children: React.ReactNode }) {
                   <a {...link('/tv')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Cable TV</a>
                   <a {...link('/transactions')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Transactions</a>
                   <a {...link('/password')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Change password</a>
+                  {isStaff(user.role) ? (
+                    <a {...link('/staff')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Staff</a>
+                  ) : null}
                   <a {...link('/help')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Help</a>
                   <button
                     type="button"
@@ -419,6 +424,16 @@ function Shell({ children }: { children: React.ReactNode }) {
                 <Icon size={16} /> {label}
               </a>
             ))}
+            {isStaff(user.role) ? (
+              <a
+                {...link('/staff')}
+                className={`flex items-center gap-3 rounded-xl px-3.5 py-2 text-sm font-medium transition ${
+                  isActive(path, '/staff') ? 'bg-zener-gold/[0.12] text-zener-gold' : 'text-white/45 hover:bg-white/[0.04] hover:text-white'
+                }`}
+              >
+                <ShieldCheck size={16} /> Staff
+              </a>
+            ) : null}
             <button
               type="button"
               onClick={() => void signOut()}
@@ -581,19 +596,7 @@ const MOBILE_NAV: [string, string, (p: { size?: number }) => React.ReactNode][] 
   ['/profile', 'Account', UserRound],
 ];
 
-function PageTitle({ title, sub, action }: { title: string; sub?: string; action?: React.ReactNode }) {
-  return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <h1 className="text-2xl font-black tracking-tight sm:text-[28px]">{title}</h1>
-        {sub ? <p className="mt-1 text-sm text-white/45">{sub}</p> : null}
-      </div>
-      {action}
-    </div>
-  );
-}
 
-const card = 'rounded-2xl border border-white/[0.07] bg-white/[0.02]';
 
 // ---------------------------------------------------------------------------
 // Buy
@@ -2497,6 +2500,12 @@ function WalletPage({ funded }: { funded: boolean }) {
     return () => ts.forEach((t) => window.clearTimeout(t));
   }, [funded, refreshWallet, load]);
 
+  const [missing, setMissing] = useState(false);
+  const refreshAll = useCallback(() => {
+    refreshWallet();
+    load();
+  }, [refreshWallet, load]);
+
   const months = activity?.months ?? [];
   const now = months[months.length - 1];
   const prev = months[months.length - 2];
@@ -2565,6 +2574,15 @@ function WalletPage({ funded }: { funded: boolean }) {
           <div ref={fundBoxRef}>
             <FundWallet inputRef={fundRef} funded={funded} onFunded={() => { refreshWallet(); load(); }} />
           </div>
+          <button
+            type="button"
+            onClick={() => setMissing(true)}
+            className="-mt-3 w-full text-center text-xs font-semibold text-white/45 hover:text-white"
+          >
+            Sent money but it's not in your wallet?
+          </button>
+
+          <WithdrawCard walletKobo={walletKobo} onDone={refreshAll} />
 
           {meters.length ? (
             <section className={`${card} p-5`}>
@@ -2591,6 +2609,7 @@ function WalletPage({ funded }: { funded: boolean }) {
           ) : null}
         </div>
       </div>
+      {missing ? <MissingPaymentDialog onClose={() => setMissing(false)} onFound={refreshAll} /> : null}
     </>
   );
 }
@@ -3061,13 +3080,7 @@ function HelpPage() {
   );
 }
 
-function Spinner() {
-  return <div className="grid place-items-center py-16"><Loader2 className="animate-spin text-zener-gold" /></div>;
-}
 
-function ErrorBox({ text }: { text: string }) {
-  return <p className="rounded-lg bg-zener-danger/10 px-3.5 py-2.5 text-sm text-zener-danger">{text}</p>;
-}
 
 function Empty({ text, action, onAction }: { text: string; action: string; onAction: () => void }) {
   return (
@@ -3130,6 +3143,7 @@ function OrderView({
   const [resent, setResent] = useState('');
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState('');
+  const [missing, setMissing] = useState(false);
   const cancelOrder = async () => {
     if (!order) return;
     const ok = await askConfirm({
@@ -3231,6 +3245,9 @@ function OrderView({
                 {cancelling ? <Loader2 size={16} className="animate-spin" /> : <X size={16} />} Cancel order
               </button>
               {cancelError ? <p className="text-center text-sm text-zener-danger">{cancelError}</p> : null}
+              <button type="button" onClick={() => setMissing(true)} className="w-full py-1 text-center text-xs font-semibold text-white/45 hover:text-white">
+                I've paid but nothing happened
+              </button>
             </div>
           ) : null}
         </>
@@ -3281,6 +3298,19 @@ function OrderView({
             </button>
           ) : null}
         </div>
+      ) : null}
+      {canShare && order.status === 'payment_failed' ? (
+        <button type="button" onClick={() => setMissing(true)} className={`${actionBtn} w-full`}>
+          I paid but nothing came
+        </button>
+      ) : null}
+      {missing ? (
+        <MissingPaymentDialog
+          orderId={order.id}
+          amountKobo={order.bank_transfer?.amount_kobo ?? order.amount_kobo}
+          onClose={() => setMissing(false)}
+          onFound={() => void loadRef.current().then(setOrder).catch(() => undefined)}
+        />
       ) : null}
       {sharing ? <ShareTokenDialog order={order} onClose={() => setSharing(false)} /> : null}
       {order.sandbox ? <p className="text-center text-xs text-yellow-300/80">Test mode: this token is not valid on a real meter.</p> : null}
@@ -3374,27 +3404,12 @@ function useCountdown(until?: string) {
 const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
 const groupAccount = (n: string) => (n.length === 10 ? `${n.slice(0, 4)} ${n.slice(4, 7)} ${n.slice(7)}` : n);
 
-const actionBtn =
-  'flex h-11 items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] text-sm font-bold hover:border-white/20 disabled:opacity-50';
 
 // ---------------------------------------------------------------------------
 // Primitives
 // ---------------------------------------------------------------------------
 
-const inputCls =
-  'h-12 w-full rounded-xl border border-white/[0.09] bg-white/[0.03] px-4 text-[15px] text-white outline-none transition placeholder:text-white/25 focus:border-zener-gold/70 focus:bg-white/[0.05] focus:ring-4 focus:ring-zener-gold/10';
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div className="mb-2 flex items-baseline justify-between">
-        <span className="text-sm font-medium text-white/70">{label}</span>
-        {hint ? <span className="text-xs text-white/35">{hint}</span> : null}
-      </div>
-      {children}
-    </div>
-  );
-}
 
 function SummaryRow({ label, value, strong = false }: { label: string; value?: string; strong?: boolean }) {
   return (

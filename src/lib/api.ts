@@ -345,6 +345,116 @@ export const requests = {
   email: (code: string, email: string) => request<{ sent_to: string }>('POST', `/v1/requests/${encodeURIComponent(code)}/email`, { email }),
 };
 
+// ---- Money out: withdrawals, refunds, reconciliation, disputes ----
+export type Bank = { name: string; code: string; cbn_code: string };
+export type BankLimits = { fee_kobo: number; min_kobo: number; max_kobo: number; daily_kobo: number; approval_kobo: number };
+export type BankAccountLookup = { account_number: string; account_name: string; bank_code: string; bank_name: string; fee_kobo: number };
+export type PayoutStatus = 'review' | 'queued' | 'sending' | 'pending' | 'successful' | 'failed' | 'rejected' | 'reversed';
+export type Payout = {
+  id: string;
+  kind: 'withdrawal' | 'refund';
+  amount_kobo: number;
+  fee_kobo: number;
+  bank_code: string;
+  bank_name: string;
+  account_number: string;
+  account_name: string;
+  reference: string;
+  status: PayoutStatus;
+  review_reason?: string;
+  failure_reason?: string;
+  payment_reference?: string;
+  note?: string;
+  attempts: number;
+  created_at: string;
+  completed_at?: string;
+  customer_name?: string;
+  customer_email?: string;
+};
+export type Dispute = {
+  id: string;
+  order_id?: string;
+  session_id: string;
+  amount_kobo: number;
+  description: string;
+  provider_reference?: string;
+  provider_status?: string;
+  provider_message?: string;
+  ticket_id?: string;
+  status: 'open' | 'resolved';
+  resolution?: string;
+  created_at: string;
+  customer_name?: string;
+  customer_email?: string;
+};
+export type ReportResult = { outcome: 'credited' | 'pending' | 'elsewhere' | 'reported'; message: string; dispute?: Dispute };
+export type PaymentForRefund = {
+  reference: string;
+  purpose: string;
+  status: string;
+  amount_kobo: number;
+  created_at: string;
+  customer_name: string;
+  customer_email: string;
+  wallet_kobo: number;
+  sender_name: string;
+  sender_bank: string;
+  sender_account: string;
+  sender_bank_code: string;
+  order_id?: string;
+  order_status?: string;
+  refunds: Payout[];
+  refundable_kobo: number;
+  refundable_note?: string;
+};
+export type ReconRun = {
+  id: string;
+  day: string;
+  status: 'running' | 'done' | 'failed';
+  bank_count: number;
+  matched: number;
+  recovered: number;
+  issues: number;
+  error?: string;
+  started_at: string;
+  finished_at?: string;
+};
+export type ReconItem = {
+  id: string;
+  day: string;
+  kind: string;
+  reference: string;
+  amount_kobo: number;
+  detail: string;
+  status: 'open' | 'recovered' | 'resolved';
+  note?: string;
+  created_at: string;
+};
+
+export const money = {
+  banks: () => request<{ banks: Bank[] } & BankLimits>('GET', '/v1/payouts/banks'),
+  lookup: (bank_code: string, account_number: string) => request<BankAccountLookup>('POST', '/v1/payouts/lookup', { bank_code, account_number }),
+  withdraw: (input: { bank_code: string; account_number: string; amount_kobo: number; password: string }, idempotencyKey: string) =>
+    request<Payout>('POST', '/v1/payouts', input, { 'Idempotency-Key': idempotencyKey }),
+  payouts: (limit = 20) => request<{ payouts: Payout[] }>('GET', `/v1/payouts?limit=${limit}`),
+  report: (input: { order_id?: string; session_id?: string; amount_kobo?: number; note?: string }) =>
+    request<ReportResult>('POST', '/v1/payments/report', input),
+};
+
+export const staff = {
+  payouts: (status = '') => request<{ payouts: Payout[] }>('GET', `/v1/admin/payouts?status=${encodeURIComponent(status)}`),
+  decide: (id: string, action: 'approve' | 'reject' | 'mark_paid' | 'mark_failed', note = '') =>
+    request<Payout>('POST', `/v1/admin/payouts/${encodeURIComponent(id)}/decision`, { action, note }),
+  payment: (ref: string) => request<PaymentForRefund>('GET', `/v1/admin/payments/${encodeURIComponent(ref)}`),
+  refund: (ref: string, input: { amount_kobo: number; note: string; bank_code?: string; account_number?: string }, idempotencyKey: string) =>
+    request<Payout>('POST', `/v1/admin/payments/${encodeURIComponent(ref)}/refund`, input, { 'Idempotency-Key': idempotencyKey }),
+  recon: (status = '') => request<{ runs: ReconRun[]; items: ReconItem[] }>('GET', `/v1/admin/reconciliation?status=${encodeURIComponent(status)}`),
+  runRecon: (day: string) => request<ReconRun>('POST', '/v1/admin/reconciliation/run', { day }),
+  resolveRecon: (id: string, note: string) => request<void>('POST', `/v1/admin/reconciliation/items/${encodeURIComponent(id)}/resolve`, { note }),
+  disputes: (status = '') => request<{ disputes: Dispute[] }>('GET', `/v1/admin/disputes?status=${encodeURIComponent(status)}`),
+  resolveDispute: (id: string, resolution: string) => request<void>('POST', `/v1/admin/disputes/${encodeURIComponent(id)}/resolve`, { resolution }),
+};
+
 // ---- Airtime, data and cable TV (paid from the wallet) ----
 export type BillCategory = 'airtime' | 'data' | 'cable';
 export type BillService = { code: string; name: string };
