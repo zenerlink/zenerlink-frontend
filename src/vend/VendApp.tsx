@@ -33,6 +33,7 @@ import {
 import { brandedQr, brandedQrUrl } from './qr';
 import { ScanDialog } from './scan';
 import { discoLogo } from '../assets/discos';
+import { BILL_LOGOS } from '../assets/bills';
 import logo from '../assets/logo-icon-white.svg';
 import { ApiError, IS_PRODUCTION, account, api, bills, guest, koboToNaira, nairaToKobo, setSignedOutHandler } from '../lib/api';
 import type { ApiMeter, BankTransfer, Bill, BillProduct, BillService, Branding, DeliveryChannel, Disco, GuestOrder, PublicMeter, Schedule, User, WalletActivity, WalletEntry } from '../lib/api';
@@ -1094,6 +1095,36 @@ function billTitle(b: Bill): string {
   return `${b.service_name} · ${b.product_name}`;
 }
 
+// ServicePicker chooses a network or cable provider, with its logo.
+function ServicePicker({ services, value, onChange }: { services: BillService[]; value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${Math.max(services.length, 1)}, minmax(0, 1fr))` }}>
+      {services.map((sv) => {
+        const on = sv.code === value;
+        const logo = BILL_LOGOS[sv.code];
+        return (
+          <button
+            key={sv.code}
+            type="button"
+            aria-pressed={on}
+            onClick={() => onChange(sv.code)}
+            className={`flex flex-col items-center gap-1.5 rounded-xl border px-1 py-2.5 text-xs font-semibold transition ${
+              on ? 'border-zener-gold/60 bg-zener-gold/10 text-zener-gold' : 'border-white/[0.08] text-white/55 hover:border-white/20 hover:text-white'
+            }`}
+          >
+            {logo ? (
+              <img src={logo} alt="" className={`h-9 w-9 rounded-lg object-cover transition ${on ? '' : 'opacity-70'}`} />
+            ) : (
+              <span className="grid h-9 w-9 place-items-center rounded-lg bg-white/[0.07] text-[9px] font-bold">{sv.code.slice(0, 4)}</span>
+            )}
+            <span className="truncate">{sv.name}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function BillsPage({ kind }: { kind: 'phone' | 'cable' }) {
   const { user, nav, walletKobo, refreshWallet } = useAcct();
   const [networks, setNetworks] = useState<BillService[]>([]);
@@ -1282,7 +1313,7 @@ function BillsPage({ kind }: { kind: 'phone' | 'cable' }) {
                 </Field>
               ) : (
                 <Field label="Provider">
-                  <Segmented value={service as string} onChange={setService} options={providers.map((p) => [p.code, p.name] as [string, string])} />
+                  <ServicePicker services={providers} value={service} onChange={setService} />
                 </Field>
               )}
 
@@ -1318,7 +1349,7 @@ function BillsPage({ kind }: { kind: 'phone' | 'cable' }) {
 
               {kind === 'phone' ? (
                 <Field label="Network" hint={service ? 'Detected from the number — change it if you ported' : undefined}>
-                  <Segmented value={service} onChange={setService} options={networks.map((n) => [n.code, n.name] as [string, string])} />
+                  <ServicePicker services={networks} value={service} onChange={setService} />
                 </Field>
               ) : null}
 
@@ -1433,9 +1464,12 @@ function BillsPage({ kind }: { kind: 'phone' | 'cable' }) {
                       }}
                       className="flex w-full items-center justify-between gap-3 py-2.5 text-left text-sm"
                     >
-                      <span className="min-w-0">
-                        <span className="block truncate text-white/80">{b.recipient}</span>
-                        <span className="block truncate text-xs text-white/35">{billTitle(b)}</span>
+                      <span className="flex min-w-0 items-center gap-2.5">
+                        {BILL_LOGOS[b.service] ? <img src={BILL_LOGOS[b.service]} alt="" className="h-7 w-7 shrink-0 rounded-md object-cover" /> : null}
+                        <span className="min-w-0">
+                          <span className="block truncate text-white/80">{b.recipient}</span>
+                          <span className="block truncate text-xs text-white/35">{billTitle(b)}</span>
+                        </span>
                       </span>
                       <span className="shrink-0 text-right">
                         <span className="block font-semibold">{naira(b.amount_kobo)}</span>
