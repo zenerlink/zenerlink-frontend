@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { brandedQr, brandedQrUrl } from './qr';
 import { ScanDialog } from './scan';
+import { ConfirmHost, askConfirm } from './confirm';
 import type { ScanResult } from './scan';
 import { discoLogo } from '../assets/discos';
 import { BILL_LOGOS } from '../assets/bills';
@@ -205,6 +206,7 @@ export default function VendRoot() {
     page = (
       <Acct.Provider value={{ user, setUser, nav, path: p, walletKobo, refreshWallet, signOut }}>
         <Shell>{body}</Shell>
+        <ConfirmHost />
       </Acct.Provider>
     );
   }
@@ -1242,8 +1244,15 @@ function AutoBuyCard({ schedules, onChange }: { schedules: Schedule[]; onChange:
                 <button
                   type="button"
                   disabled={busy === sc.id}
-                  onClick={() => {
-                    if (window.confirm(`Stop auto-buy for meter ${sc.meter_number}?`)) void act(sc.id, () => account.removeSchedule(sc.id));
+                  onClick={async () => {
+                    const ok = await askConfirm({
+                      title: 'Stop this auto-buy?',
+                      message: `We won't buy ${naira(sc.amount_kobo)} for meter ${sc.meter_number} any more. You can set it up again any time.`,
+                      confirmLabel: 'Stop auto-buy',
+                      cancelLabel: 'Keep it',
+                      danger: true,
+                    });
+                    if (ok) void act(sc.id, () => account.removeSchedule(sc.id));
                   }}
                   className="font-semibold text-white/50 hover:text-zener-danger disabled:opacity-40"
                 >
@@ -1521,13 +1530,20 @@ function PayRequestPage({ code }: { code: string }) {
             </button>
             <button
               type="button"
-              onClick={() =>
-                window.confirm('Cancel this request? The QR code will stop working.') &&
-                requests
-                  .cancel(code)
-                  .then(setReq)
-                  .catch((e) => setError(message(e)))
-              }
+              onClick={async () => {
+                const ok = await askConfirm({
+                  title: 'Cancel this request?',
+                  message: 'The QR code and link will stop working, so nobody can pay it.',
+                  confirmLabel: 'Cancel request',
+                  cancelLabel: 'Keep it',
+                  danger: true,
+                });
+                if (ok)
+                  requests
+                    .cancel(code)
+                    .then(setReq)
+                    .catch((e) => setError(message(e)));
+              }}
               className="flex h-12 items-center justify-center rounded-xl border border-white/[0.1] text-sm font-semibold text-white/70 hover:border-zener-danger/50 hover:text-zener-danger"
             >
               Cancel request
@@ -2199,8 +2215,14 @@ function MetersPage() {
 
   // Orders come newest first, so the first match is the last purchase.
   const last = (m: ApiMeter) => (orders ?? []).find((o) => o.meter_number === m.meter_number && o.provider_code === m.provider_code);
-  const remove = (m: ApiMeter) => {
-    if (!window.confirm(`Remove meter ${m.meter_number} from your account?`)) return;
+  const remove = async (m: ApiMeter) => {
+    const ok = await askConfirm({
+      title: 'Remove this meter?',
+      message: `Meter ${m.meter_number} will be removed from your account. Your past purchases stay in your history.`,
+      confirmLabel: 'Remove meter',
+      danger: true,
+    });
+    if (!ok) return;
     account
       .removeMeter(m.id)
       .then(() => setMeters((ms) => (ms ?? []).filter((x) => x.id !== m.id)))
@@ -3110,7 +3132,14 @@ function OrderView({
   const [cancelError, setCancelError] = useState('');
   const cancelOrder = async () => {
     if (!order) return;
-    if (!window.confirm("Cancel this order?\n\nOnly do this if you haven't sent the money. If you already sent it, it will be added to your wallet.")) return;
+    const ok = await askConfirm({
+      title: 'Cancel this order?',
+      message: "Only cancel if you haven't sent the money yet. If you already sent it, don't worry: it will be added to your wallet.",
+      confirmLabel: 'Cancel order',
+      cancelLabel: 'Keep order',
+      danger: true,
+    });
+    if (!ok) return;
     setCancelling(true);
     setCancelError('');
     try {
