@@ -1260,9 +1260,12 @@ function WalletPage({ funded }: { funded: boolean }) {
   const months = activity?.months ?? [];
   const now = months[months.length - 1];
   const prev = months[months.length - 2];
+  const fundBoxRef = useRef<HTMLDivElement>(null);
+  // Scroll to the funding card: the amount box when there is one, else the account number.
   const fund = () => {
-    fundRef.current?.focus();
-    fundRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const target = fundRef.current ?? fundBoxRef.current;
+    target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    fundRef.current?.focus({ preventScroll: true });
   };
 
   return (
@@ -1319,7 +1322,9 @@ function WalletPage({ funded }: { funded: boolean }) {
             </div>
           </section>
 
-          <FundWallet inputRef={fundRef} funded={funded} onFunded={() => { refreshWallet(); load(); }} />
+          <div ref={fundBoxRef}>
+            <FundWallet inputRef={fundRef} funded={funded} onFunded={() => { refreshWallet(); load(); }} />
+          </div>
 
           {meters.length ? (
             <section className={`${card} p-5`}>
