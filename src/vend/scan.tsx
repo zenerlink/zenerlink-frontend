@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import jsQR from "jsqr";
 import { ImageUp, Loader2, X } from "lucide-react";
 import type { Prefill } from "./links";
-import { readPrefill, requestCode } from "./links";
+import { giftCode, readPrefill, requestCode } from "./links";
 
 export type ScanResult =
   | NonNullable<Prefill>
   | { meter: string }
-  | { request: string };
+  | { request: string }
+  | { gift: string };
 
 // A scanned QR: a payment request (…/pay/CODE), our buy link (…/buy?disco=AEDC&meter=…), or a bare meter number.
 export function parseMeterQr(text: string): ScanResult | null {
@@ -16,6 +17,8 @@ export function parseMeterQr(text: string): ScanResult | null {
     const u = new URL(t);
     const code = requestCode(u.pathname);
     if (code) return { request: code };
+    const gift = giftCode(u.pathname);
+    if (gift) return { gift };
     return readPrefill(u.searchParams);
   } catch {
     const digits = t.replace(/\D/g, "");

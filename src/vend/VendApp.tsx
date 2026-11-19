@@ -31,13 +31,15 @@ import {
   Tv,
   UserRound,
   Wallet,
+  Zap,
 } from 'lucide-react';
 import { brandedQr, brandedQrUrl } from './qr';
 import { ScanDialog } from './scan';
 import { ConfirmHost, askConfirm } from './confirm';
-import { ErrorBox, Field, PageTitle, Spinner, actionBtn, card, inputCls, message, naira, shortDate } from './kit';
+import { DiscoLogo, DiscoPicker, ErrorBox, Field, PageTitle, Spinner, estimateKwh, formatKwh, actionBtn, card, inputCls, message, naira, shortDate } from './kit';
 import { MissingPaymentDialog, WithdrawCard } from './money';
 import { StaffPage, isStaff } from './staff';
+import { GiftPage, UnitsPage } from './units';
 import type { ScanResult } from './scan';
 import { discoLogo } from '../assets/discos';
 import { BILL_LOGOS } from '../assets/bills';
@@ -53,7 +55,7 @@ import { LegalPage } from './Legal';
 import { ReceiptButton, ShareTokenDialog, StatementDialog, TokenSharePage } from './receipts';
 import { legalByPath } from '../seo/legal';
 import { discoBySlug } from '../seo/site';
-import { buyLink, href, readPrefill, requestCode, requestLink } from './links';
+import { buyLink, giftCode, href, readPrefill, requestCode, requestLink } from './links';
 import type { Nav, Prefill } from './links';
 
 // Buy-only product (production zenerlink.com), modelled on BuyPower: a quick
@@ -129,6 +131,7 @@ export default function VendRoot() {
   const url = new URL(path, window.location.origin);
   const orderMatch = url.pathname.match(/^\/order\/([0-9a-f-]{36})/i);
   const payCode = requestCode(url.pathname);
+  const gift = giftCode(url.pathname);
   const key = url.searchParams.get('key');
   const prefill = readPrefill(url.searchParams);
 
@@ -167,7 +170,7 @@ export default function VendRoot() {
           onDone={(u) => {
             setUser(u);
             // Land on Buy electricity, unless they came from a buy link or a receipt.
-            if (!prefill && !orderMatch && !payCode) nav('/');
+            if (!prefill && !orderMatch && !payCode && !gift) nav('/');
           }}
         />
       );
@@ -179,6 +182,10 @@ export default function VendRoot() {
       <OrderPage id={orderMatch[1]} />
     ) : payCode ? (
       <PayRequestPage code={payCode} />
+    ) : gift ? (
+      <GiftPage code={gift} nav={nav} />
+    ) : p.startsWith('/units') ? (
+      <UnitsPage nav={nav} walletKobo={walletKobo} refreshWallet={refreshWallet} />
     ) : p.startsWith('/transactions') ? (
       <TransactionsPage />
     ) : p.startsWith('/meters') ? (
@@ -284,6 +291,7 @@ const NAV: [string, string, (p: { size?: number }) => React.ReactNode][] = [
   ['/transactions', 'Transactions', Receipt],
   ['/meters', 'My meters', Gauge],
   ['/wallet', 'Wallet', Wallet],
+  ['/units', 'Saved units', Zap],
   ['/profile', 'Profile', UserRound],
   ['/password', 'Change password', KeyRound],
   ['/help', 'Help', LifeBuoy],
@@ -376,6 +384,7 @@ function Shell({ children }: { children: React.ReactNode }) {
                     <p className="truncate text-xs text-white/45">{user.email}</p>
                   </div>
                   <a {...link('/profile')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Profile</a>
+                  <a {...link('/units')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Saved units</a>
                   <a {...link('/airtime')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Airtime & data</a>
                   <a {...link('/tv')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Cable TV</a>
                   <a {...link('/transactions')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Transactions</a>
@@ -655,6 +664,7 @@ function BuyPage({
   const onScan = useCallback((r: ScanResult) => {
     setScanning(false);
     if ('request' in r) return nav(`/pay/${r.request}`);
+    if ('gift' in r) return nav(`/gift/${r.gift}`);
     if ('disco' in r) {
       setProvider(r.disco);
       setMeterType(r.type);
@@ -2037,6 +2047,7 @@ const bought = (o: GuestOrder) => (o.status === 'vended' || o.status === 'delive
 
 // UnitsCard totals the electricity bought this month (Lagos calendar month).
 function UnitsCard({ orders }: { orders: GuestOrder[] }) {
+  const { nav } = useAcct();
   const month = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' }).slice(0, 7);
   const done = orders.filter(bought);
   const thisMonth = done.filter((o) => new Date(o.created_at).toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' }).startsWith(month));
@@ -2057,6 +2068,15 @@ function UnitsCard({ orders }: { orders: GuestOrder[] }) {
           <SummaryRow label="Meter" value={last.meter_number} />
           <SummaryRow label="Date" value={shortDate(last.created_at)} />
         </dl>
+      ) : null}
+      {spent ? (
+        <button
+          type="button"
+          onClick={() => nav(`/units?send=${spent}&disco=${last?.provider_code ?? ''}`)}
+          className="mt-4 flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-white/[0.1] text-sm font-bold hover:border-zener-gold/50 hover:text-zener-gold"
+        >
+          <Share2 size={15} /> Send electricity like this
+        </button>
       ) : null}
     </div>
   );
@@ -2583,6 +2603,19 @@ function WalletPage({ funded }: { funded: boolean }) {
           </button>
 
           <WithdrawCard walletKobo={walletKobo} onDone={refreshAll} />
+
+          <section className={`${card} flex items-center gap-4 p-5`}>
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-zener-gold/15 text-zener-gold">
+              <Zap size={18} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-bold">Saved units</span>
+              <span className="block text-xs text-white/45">Keep electricity in the app; load it or send it to anyone.</span>
+            </span>
+            <button type="button" onClick={() => nav('/units')} className="h-8 shrink-0 rounded-lg border border-white/[0.1] px-3 text-xs font-bold hover:border-zener-gold/50 hover:text-zener-gold">
+              Open
+            </button>
+          </section>
 
           {meters.length ? (
             <section className={`${card} p-5`}>
@@ -3437,117 +3470,8 @@ function Segmented<T extends string>({ value, onChange, options }: { value: T; o
   );
 }
 
-function DiscoPicker({ discos, value, onChange }: { discos: Disco[]; value: string; onChange: (v: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const [q, setQ] = useState('');
-  const ref = useRef<HTMLDivElement>(null);
-  const selected = discos.find((d) => d.provider_code === value);
-  const shown = discos.filter((d) => `${d.provider_name} ${d.provider_code}`.toLowerCase().includes(q.toLowerCase()));
 
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, [open]);
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className={`${inputCls} flex items-center justify-between text-left`}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-      >
-        {selected ? (
-          <span className="flex items-center gap-3">
-            <DiscoLogo disco={selected} />
-            <span>{selected.provider_name}</span>
-          </span>
-        ) : (
-          <span className="text-white/30">{discos.length ? 'Choose your DisCo' : 'Loading DisCos…'}</span>
-        )}
-        <ChevronDown size={18} className={`text-white/40 transition ${open ? 'rotate-180' : ''}`} />
-      </button>
-      {open ? (
-        <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-xl border border-white/[0.1] bg-[rgb(var(--zener-surface))] shadow-2xl">
-          <div className="flex items-center gap-2 border-b border-white/[0.07] px-3">
-            <Search size={15} className="text-white/35" />
-            <input
-              autoFocus
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search DisCo or state"
-              className="h-11 w-full bg-transparent text-sm text-white outline-none placeholder:text-white/30"
-            />
-          </div>
-          <ul role="listbox" className="max-h-72 overflow-auto py-1">
-            {shown.map((d) => (
-              <li key={d.provider_code}>
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={d.provider_code === value}
-                  onClick={() => {
-                    onChange(d.provider_code);
-                    setOpen(false);
-                    setQ('');
-                  }}
-                  className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm hover:bg-white/[0.05]"
-                >
-                  <span className="flex items-center gap-3">
-                    <DiscoLogo disco={d} />
-                    {d.provider_name}
-                  </span>
-                  {d.provider_code === value ? <Check size={16} className="text-zener-gold" /> : null}
-                </button>
-              </li>
-            ))}
-            {!shown.length ? <li className="px-3 py-3 text-sm text-white/40">No match</li> : null}
-          </ul>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-// DisCo logo from the vending provider's catalogue; some provider images are
-// missing, so fall back to the DisCo code.
-function DiscoLogo({ disco }: { disco: Disco }) {
-  const [broken, setBroken] = useState(false);
-  const src = discoLogo(disco.provider_code, disco.logo_url);
-  if (src && !broken) {
-    return (
-      <img
-        src={src}
-        alt=""
-        loading="lazy"
-        onError={() => setBroken(true)}
-        className="h-7 w-7 shrink-0 rounded-md bg-white object-contain"
-      />
-    );
-  }
-  return (
-    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-white/[0.07] text-[8px] font-bold tracking-tight text-white/70">
-      {disco.provider_code.slice(0, 5)}
-    </span>
-  );
-}
 
 // Mirrors the backend quote: the service fee comes off first, VAT is included
 // in the rest, and the remainder buys energy at the DisCo's rate.
-function estimateKwh(d: Disco, naira: number): number {
-  if (!d.rate_kobo_per_kwh || !Number.isFinite(naira) || naira <= 0) return 0;
-  const net = Math.round(naira * 100) - d.service_fee_kobo;
-  if (net <= 0) return 0;
-  const bps = d.vat_bps ?? 0;
-  const energyKobo = net - Math.floor((net * bps) / (10000 + bps));
-  return energyKobo / d.rate_kobo_per_kwh;
-}
 
-function formatKwh(kwh: number): string {
-  return `${kwh.toLocaleString('en-NG', { maximumFractionDigits: kwh < 10 ? 1 : 0 })} kWh`;
-}

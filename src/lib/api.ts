@@ -441,6 +441,46 @@ export const money = {
     request<ReportResult>('POST', '/v1/payments/report', input),
 };
 
+// ---- Saved units: electricity kept in the app, loaded or sent later ----
+export type UnitGift = {
+  id: string;
+  code: string;
+  amount_kobo: number;
+  fee_kobo: number;
+  energy_kwh: number;
+  provider_code: string;
+  note: string;
+  status: 'open' | 'claimed' | 'cancelled' | 'expired';
+  expires_at: string;
+  claimed_at?: string;
+  created_at: string;
+  recipient_email?: string;
+  sender_name: string;
+  claimed_by_name?: string;
+  mine: boolean;
+  claimed_by_me: boolean;
+};
+export type UnitsSummary = {
+  balance_kobo: number;
+  gift_fee_kobo: number;
+  min_kobo: number;
+  max_kobo: number;
+  gifts: UnitGift[];
+  entries: { kind: string; title: string; amount_kobo: number; created_at: string }[];
+};
+export const units = {
+  get: () => request<UnitsSummary>('GET', '/v1/units'),
+  save: (amount_kobo: number, idempotencyKey: string) => request<UnitsSummary>('POST', '/v1/units/save', { amount_kobo }, { 'Idempotency-Key': idempotencyKey }),
+  load: (input: { provider_code: string; meter_number: string; meter_type: string; amount_kobo: number }, idempotencyKey: string) =>
+    request<GuestOrder>('POST', '/v1/units/load', input, { 'Idempotency-Key': idempotencyKey }),
+  send: (input: { amount_kobo: number; note?: string; provider_code?: string; from: 'units' | 'wallet' }, idempotencyKey: string) =>
+    request<UnitGift>('POST', '/v1/units/gifts', input, { 'Idempotency-Key': idempotencyKey }),
+  gift: (code: string) => request<UnitGift>('GET', `/v1/units/gifts/${encodeURIComponent(code)}`),
+  claim: (code: string) => request<UnitGift>('POST', `/v1/units/gifts/${encodeURIComponent(code)}/claim`),
+  cancel: (code: string) => request<UnitGift>('POST', `/v1/units/gifts/${encodeURIComponent(code)}/cancel`),
+  email: (code: string, email: string) => request<{ sent_to: string }>('POST', `/v1/units/gifts/${encodeURIComponent(code)}/email`, { email }),
+};
+
 export const staff = {
   payouts: (status = '') => request<{ payouts: Payout[] }>('GET', `/v1/admin/payouts?status=${encodeURIComponent(status)}`),
   decide: (id: string, action: 'approve' | 'reject' | 'mark_paid' | 'mark_failed', note = '') =>

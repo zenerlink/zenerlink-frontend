@@ -29,3 +29,7 @@ export const buyLink = (m: { provider_code: string; meter_number: string; meter_
 // A payment request link: someone else pays an exact amount for the requester's meter.
 export const requestLink = (code: string) => window.location.origin + href(`/pay/${code}`);
 export const requestCode = (pathname: string) => pathname.match(/^\/pay\/([A-Za-z0-9_-]{8,64})$/)?.[1] ?? null;
+
+// An electricity gift link: whoever claims it gets the saved units.
+export const giftLink = (code: string) => window.location.origin + href(`/gift/${code}`);
+export const giftCode = (pathname: string) => pathname.match(/^\/gift\/([A-Za-z0-9_-]{8,64})$/)?.[1] ?? null;
