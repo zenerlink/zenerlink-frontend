@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, Loader2, RotateCcw, Search } from 'lucide-react';
-import { money, nairaToKobo, staff } from '../lib/api';
+import { Check, ExternalLink, Loader2, RotateCcw, Search } from 'lucide-react';
+import { OPS_URL, money, nairaToKobo, staff } from '../lib/api';
 import type { Bank, Dispute, PaymentForRefund, Payout, ReconItem, ReconRun } from '../lib/api';
 import { askConfirm } from './confirm';
 import { ErrorBox, Field, PageTitle, Spinner, card, inputCls, message, naira, shortDate } from './kit';
@@ -23,7 +23,7 @@ const smallBtn = 'h-9 rounded-lg px-3 text-xs font-bold transition disabled:opac
 const goldBtn = `${smallBtn} bg-zener-gold text-black hover:brightness-110`;
 const plainBtn = `${smallBtn} border border-white/[0.1] text-white/75 hover:border-white/25 hover:text-white`;
 
-export function StaffPage() {
+export function StaffPage({ role }: { role: string }) {
   const [tab, setTab] = useState<Tab>(() => (new URLSearchParams(window.location.search).get('tab') as Tab) || 'payouts');
   const pick = (t: Tab) => {
     setTab(t);
@@ -31,7 +31,22 @@ export function StaffPage() {
   };
   return (
     <>
-      <PageTitle title="Staff" sub="Withdrawals, refunds, the daily bank check and payment reports." />
+      <PageTitle
+        title="Staff"
+        sub="Withdrawals, refunds, the daily bank check and payment reports."
+        action={
+          role === 'platform_admin' ? (
+            <a
+              href={OPS_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="flex h-10 items-center gap-2 rounded-xl border border-white/[0.1] px-4 text-sm font-bold text-white/80 hover:border-zener-gold/50 hover:text-zener-gold"
+            >
+              Revenue, compliance and feedback <ExternalLink size={14} />
+            </a>
+          ) : null
+        }
+      />
       <div className="-mx-4 mb-6 overflow-x-auto px-4 sm:mx-0 sm:px-0">
         <div className="flex min-w-max gap-1 rounded-xl border border-white/[0.09] bg-white/[0.03] p-1">
           {TABS.map(([t, label]) => (

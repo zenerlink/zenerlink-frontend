@@ -431,6 +431,17 @@ export type ReconItem = {
   created_at: string;
 };
 
+// ---- Customer feedback ----
+export type FeedbackAsk = { ask: '' | 'purchase' | 'periodic'; order_id?: string };
+export const feedback = {
+  prompt: (orderId?: string) => request<FeedbackAsk>('GET', `/v1/feedback/prompt${orderId ? `?order_id=${encodeURIComponent(orderId)}` : ''}`),
+  send: (input: { kind: 'purchase' | 'periodic'; order_id?: string; rating?: number | null; comment?: string }) =>
+    request<void>('POST', '/v1/feedback', input),
+};
+
+// The operations dashboards (revenue, compliance, feedback), for the platform admin.
+export const OPS_URL = ((import.meta.env.VITE_OPS_URL as string | undefined) || 'https://zenerlink-ops.vercel.app').replace(/\/$/, '');
+
 export const money = {
   banks: () => request<{ banks: Bank[] } & BankLimits>('GET', '/v1/payouts/banks'),
   lookup: (bank_code: string, account_number: string) => request<BankAccountLookup>('POST', '/v1/payouts/lookup', { bank_code, account_number }),

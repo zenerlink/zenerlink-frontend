@@ -40,6 +40,7 @@ import { DiscoLogo, DiscoPicker, ErrorBox, Field, PageTitle, Spinner, estimateKw
 import { MissingPaymentDialog, WithdrawCard } from './money';
 import { StaffPage, isStaff } from './staff';
 import { GiftPage, UnitsPage } from './units';
+import { PeriodicFeedback, PurchaseFeedback } from './feedback';
 import type { ScanResult } from './scan';
 import { discoLogo } from '../assets/discos';
 import { BILL_LOGOS } from '../assets/bills';
@@ -198,7 +199,7 @@ export default function VendRoot() {
     ) : p.startsWith('/help') ? (
       <HelpPage />
     ) : p.startsWith('/staff') && isStaff(user.role) ? (
-      <StaffPage />
+      <StaffPage role={user.role} />
     ) : p.startsWith('/airtime') ? (
       <BillsPage kind="phone" />
     ) : p.startsWith('/tv') ? (
@@ -215,6 +216,7 @@ export default function VendRoot() {
       <Acct.Provider value={{ user, setUser, nav, path: p, walletKobo, refreshWallet, signOut }}>
         <Shell>{body}</Shell>
         <ConfirmHost />
+        <PeriodicFeedback />
       </Acct.Provider>
     );
   }
@@ -3335,6 +3337,7 @@ function OrderView({
           ) : null}
         </div>
       ) : null}
+      {done && canShare ? <PurchaseFeedback orderId={order.id} /> : null}
       {canShare && order.status === 'payment_failed' ? (
         <button type="button" onClick={() => setMissing(true)} className={`${actionBtn} w-full`}>
           I paid but nothing came
