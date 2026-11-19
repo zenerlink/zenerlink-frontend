@@ -2,13 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import jsQR from 'jsqr';
 import { X } from 'lucide-react';
 import type { Prefill } from './links';
-import { readPrefill } from './links';
+import { readPrefill, requestCode } from './links';
 
-// A scanned meter QR: our buy link (…/buy?disco=AEDC&meter=…), or a bare meter number.
-export function parseMeterQr(text: string): Prefill | { meter: string } | null {
+export type ScanResult = NonNullable<Prefill> | { meter: string } | { request: string };
+
+// A scanned QR: a payment request (…/pay/CODE), our buy link (…/buy?disco=AEDC&meter=…), or a bare meter number.
+export function parseMeterQr(text: string): ScanResult | null {
   const t = text.trim();
   try {
     const u = new URL(t);
+    const code = requestCode(u.pathname);
+    if (code) return { request: code };
     return readPrefill(u.searchParams);
   } catch {
     const digits = t.replace(/\D/g, '');
@@ -17,10 +21,10 @@ export function parseMeterQr(text: string): Prefill | { meter: string } | null {
 }
 
 // ScanDialog opens the back camera and reads a meter QR code.
-export function ScanDialog({ onResult, onClose }: { onResult: (r: Prefill | { meter: string }) => void; onClose: () => void }) {
+export function ScanDialog({ onResult, onClose }: { onResult: (r: ScanResult) => void; onClose: () => void }) {
   const video = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState('');
-  const [hint, setHint] = useState('Point the camera at the meter QR code.');
+  const [hint, setHint] = useState('Point the camera at a meter QR or a payment request.');
 
   useEffect(() => {
     let stream: MediaStream | null = null;
@@ -46,7 +50,7 @@ export function ScanDialog({ onResult, onClose }: { onResult: (r: Prefill | { me
             onResult(r);
             return;
           }
-          setHint('That QR code is not a meter code.');
+          setHint('That QR code is not a Zenerlink meter or payment request.');
         }
       }
       raf = requestAnimationFrame(tick);
@@ -78,7 +82,7 @@ export function ScanDialog({ onResult, onClose }: { onResult: (r: Prefill | { me
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={onClose}>
       <div className="w-full max-w-sm rounded-2xl border border-white/[0.08] bg-zener-surface p-5" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
-          <p className="text-lg font-bold">Scan meter QR</p>
+          <p className="text-lg font-bold">Scan QR code</p>
           <button type="button" onClick={onClose} aria-label="Close" className="text-white/50 hover:text-white">
             <X size={20} />
           </button>

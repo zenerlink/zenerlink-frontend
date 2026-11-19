@@ -25,3 +25,7 @@ export const readPrefill = (q: URLSearchParams): Prefill => {
 
 export const buyLink = (m: { provider_code: string; meter_number: string; meter_type: string }) =>
   window.location.origin + href(`/buy?disco=${m.provider_code}&meter=${m.meter_number}&type=${m.meter_type}`);
+
+// A payment request link: someone else pays an exact amount for the requester's meter.
+export const requestLink = (code: string) => window.location.origin + href(`/pay/${code}`);
+export const requestCode = (pathname: string) => pathname.match(/^\/pay\/([A-Za-z0-9_-]{8,64})$/)?.[1] ?? null;

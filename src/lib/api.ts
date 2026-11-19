@@ -308,6 +308,41 @@ export const guest = {
 export const koboToNaira = (k: number) => k / 100;
 export const nairaToKobo = (n: number) => Math.round(n * 100);
 
+// ---- Payment requests: "pay for my electricity" by QR / link ----
+export type PaymentRequest = {
+  id: string;
+  code: string;
+  status: 'open' | 'paying' | 'paid' | 'cancelled' | 'expired';
+  amount_kobo: number;
+  fee_kobo: number;
+  note: string;
+  requester_name: string;
+  provider_code: string;
+  provider_name: string;
+  meter_number: string;
+  meter_type: 'prepaid' | 'postpaid';
+  customer_name: string;
+  mine: boolean;
+  paid_by_me: boolean;
+  payer_name?: string;
+  order_id?: string;
+  token?: string;
+  energy_kwh?: number;
+  expires_at: string;
+  paid_at: string | null;
+  created_at: string;
+};
+
+export const requests = {
+  create: (input: { provider_code: string; meter_number: string; meter_type: string; amount_kobo: number; note?: string }, idempotencyKey: string) =>
+    request<PaymentRequest>('POST', '/v1/requests', input, { 'Idempotency-Key': idempotencyKey }),
+  mine: (limit = 20) => request<{ requests: PaymentRequest[] }>('GET', `/v1/requests?limit=${limit}`),
+  get: (code: string) => request<PaymentRequest>('GET', `/v1/requests/${encodeURIComponent(code)}`),
+  pay: (code: string, input: { payment_method: 'checkout' | 'wallet' }, idempotencyKey: string) =>
+    request<GuestOrder>('POST', `/v1/requests/${encodeURIComponent(code)}/pay`, input, { 'Idempotency-Key': idempotencyKey }),
+  cancel: (code: string) => request<PaymentRequest>('POST', `/v1/requests/${encodeURIComponent(code)}/cancel`),
+};
+
 // ---- Airtime, data and cable TV (paid from the wallet) ----
 export type BillCategory = 'airtime' | 'data' | 'cable';
 export type BillService = { code: string; name: string };

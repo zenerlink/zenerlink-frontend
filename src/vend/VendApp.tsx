@@ -32,11 +32,12 @@ import {
 } from 'lucide-react';
 import { brandedQr, brandedQrUrl } from './qr';
 import { ScanDialog } from './scan';
+import type { ScanResult } from './scan';
 import { discoLogo } from '../assets/discos';
 import { BILL_LOGOS } from '../assets/bills';
 import logo from '../assets/logo-icon-white.svg';
-import { ApiError, IS_PRODUCTION, account, api, bills, guest, koboToNaira, nairaToKobo, setSignedOutHandler } from '../lib/api';
-import type { ApiMeter, BankTransfer, Bill, BillProduct, BillService, Branding, DeliveryChannel, Disco, GuestOrder, PublicMeter, Schedule, User, WalletActivity, WalletEntry } from '../lib/api';
+import { ApiError, IS_PRODUCTION, account, api, bills, guest, koboToNaira, nairaToKobo, requests, setSignedOutHandler } from '../lib/api';
+import type { ApiMeter, BankTransfer, Bill, BillProduct, BillService, Branding, DeliveryChannel, Disco, GuestOrder, PaymentRequest, PublicMeter, Schedule, User, WalletActivity, WalletEntry } from '../lib/api';
 import { BrandContext, fallbackBranding, useBrand } from '../lib/brand';
 import { applyBranding } from '../lib/theme';
 import { formatCurrency } from '../lib/format';
@@ -45,7 +46,7 @@ import { LegalPage } from './Legal';
 import { ReceiptButton, ShareTokenDialog, StatementDialog, TokenSharePage } from './receipts';
 import { legalByPath } from '../seo/legal';
 import { discoBySlug } from '../seo/site';
-import { buyLink, href, readPrefill } from './links';
+import { buyLink, href, readPrefill, requestCode, requestLink } from './links';
 import type { Nav, Prefill } from './links';
 
 // Buy-only product (production zenerlink.com), modelled on BuyPower: a quick
@@ -124,6 +125,7 @@ export default function VendRoot() {
 
   const url = new URL(path, window.location.origin);
   const orderMatch = url.pathname.match(/^\/order\/([0-9a-f-]{36})/i);
+  const payCode = requestCode(url.pathname);
   const key = url.searchParams.get('key');
   const prefill = readPrefill(url.searchParams);
 
@@ -162,7 +164,7 @@ export default function VendRoot() {
           onDone={(u) => {
             setUser(u);
             // Land on Buy electricity, unless they came from a buy link or a receipt.
-            if (!prefill && !orderMatch) nav('/');
+            if (!prefill && !orderMatch && !payCode) nav('/');
           }}
         />
       );
@@ -172,6 +174,8 @@ export default function VendRoot() {
     const p = url.pathname;
     const body = orderMatch ? (
       <OrderPage id={orderMatch[1]} />
+    ) : payCode ? (
+      <PayRequestPage code={payCode} />
     ) : p.startsWith('/transactions') ? (
       <TransactionsPage />
     ) : p.startsWith('/meters') ? (
@@ -514,17 +518,26 @@ function BuyPage({
   const [error, setError] = useState('');
   const [paying, setPaying] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const [asked, setAsked] = useState<PaymentRequest | null>(null);
+  const [myRequests, setMyRequests] = useState<PaymentRequest[]>([]);
   const idemKey = useRef(crypto.randomUUID());
+  const loadRequests = useCallback(() => {
+    requests
+      .mine(10)
+      .then((r) => setMyRequests(r.requests))
+      .catch(() => undefined);
+  }, []);
   const repeating = repeat !== 'once';
-  const onScan = useCallback((r: Prefill | { meter: string }) => {
+  const onScan = useCallback((r: ScanResult) => {
     setScanning(false);
-    if (!r) return;
+    if ('request' in r) return nav(`/pay/${r.request}`);
     if ('disco' in r) {
       setProvider(r.disco);
       setMeterType(r.type);
     }
     setMeterNumber(r.meter);
-  }, []);
+  }, [nav]);
   const loadSchedules = useCallback(() => {
     account
       .schedules()
@@ -564,7 +577,8 @@ function BuyPage({
       .then((r) => setRecent(r.orders))
       .catch(() => undefined);
     loadSchedules();
-  }, [meterId, loadSchedules]);
+    loadRequests();
+  }, [meterId, loadSchedules, loadRequests]);
 
   // A changed form is a new purchase (new idempotency key).
   useEffect(() => {
@@ -637,6 +651,26 @@ function BuyPage({
       setError(message(e));
     } finally {
       setPaying(false);
+    }
+  };
+
+  // "Ask someone to pay": a QR / link for exactly this meter and amount.
+  const ask = async () => {
+    setError('');
+    if (!meter?.verified) return setError('Enter a meter number we can verify.');
+    if (!amountOk) return setError(`Enter an amount between ${formatCurrency(minNaira)} and ${formatCurrency(maxNaira)}.`);
+    setAsking(true);
+    try {
+      const r = await requests.create(
+        { provider_code: provider, meter_number: meterNumber, meter_type: meterType, amount_kobo: nairaToKobo(value) },
+        `req-${idemKey.current}`,
+      );
+      setAsked(r);
+      loadRequests();
+    } catch (e) {
+      setError(message(e));
+    } finally {
+      setAsking(false);
     }
   };
 
@@ -948,9 +982,21 @@ function BuyPage({
                   ? `Pay ${formatCurrency(total)}`
                   : 'Pay'}
           </button>
+          {!repeating ? (
+            <button
+              type="button"
+              disabled={asking || !meter?.verified || !amountOk}
+              onClick={() => void ask()}
+              className="flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-white/[0.1] text-sm font-semibold text-white/80 transition hover:border-white/25 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {asking ? <Loader2 size={16} className="animate-spin" /> : <QrCode size={16} />}
+              {value > 0 && amountOk ? `Ask someone to pay ${formatCurrency(value)}` : 'Ask someone to pay'}
+            </button>
+          ) : null}
           <p className="flex items-center justify-center gap-1.5 text-center text-xs text-white/35">
             <Lock size={12} /> Processed securely. Receipt to {user.email}
           </p>
+          {asked ? <RequestQrDialog request={asked} onClose={() => setAsked(null)} /> : null}
         </div>
 
         <div className="space-y-6">
@@ -978,6 +1024,7 @@ function BuyPage({
           </div>
           <UnitsCard orders={recent} />
           <AutoBuyCard schedules={schedules} onChange={loadSchedules} />
+          <RequestsCard requests={myRequests} onOpen={(r) => (r.status === 'open' ? setAsked(r) : nav(`/pay/${r.code}`))} />
           {recent.length ? (
             <div className={`${card} p-6`}>
               <div className="mb-2 flex items-baseline justify-between">
@@ -1089,6 +1136,304 @@ function AutoBuyCard({ schedules, onChange }: { schedules: Schedule[]; onChange:
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Payment requests: "pay for my electricity"
+// ---------------------------------------------------------------------------
+
+const REQUEST_STATUS: Record<PaymentRequest['status'], [string, string]> = {
+  open: ['Waiting', 'text-zener-gold'],
+  paying: ['Being paid', 'text-yellow-300/90'],
+  paid: ['Paid', 'text-zener-success'],
+  cancelled: ['Cancelled', 'text-white/35'],
+  expired: ['Expired', 'text-white/35'],
+};
+
+// RequestQrDialog shows the QR and link for a request, to share with whoever pays.
+function RequestQrDialog({ request, onClose }: { request: PaymentRequest; onClose: () => void }) {
+  const brand = useBrand();
+  const link = requestLink(request.code);
+  const [qr, setQr] = useState('');
+  const [copied, setCopied] = useState(false);
+  const text = `Please pay ${naira(request.amount_kobo)} for my electricity (${request.provider_name}, meter ${request.meter_number}).`;
+
+  useEffect(() => {
+    brandedQrUrl(link, 480, brand.logo_url || logo).then(setQr).catch(() => undefined);
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    document.addEventListener('keydown', esc);
+    return () => document.removeEventListener('keydown', esc);
+  }, [link, brand.logo_url, onClose]);
+
+  const copy = () => {
+    void navigator.clipboard?.writeText(link);
+    setCopied(true);
+  };
+  const share = async () => {
+    try {
+      if (qr) {
+        const file = new File([await (await fetch(qr)).blob()], `pay-${request.code}.png`, { type: 'image/png' });
+        if (navigator.canShare?.({ files: [file] })) return await navigator.share({ files: [file], text: `${text}\n${link}` });
+      }
+      if (navigator.share) return await navigator.share({ title: 'Pay for my electricity', text, url: link });
+      copy();
+    } catch {
+      /* share sheet closed */
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4 backdrop-blur-sm" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div role="dialog" aria-modal="true" aria-label="Payment request" className="w-full max-w-sm rounded-2xl border border-white/[0.1] bg-[rgb(var(--zener-surface))] p-6 shadow-2xl">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-lg font-bold">Ask someone to pay</h2>
+            <p className="truncate text-sm text-white/45">
+              {naira(request.amount_kobo)} · {request.meter_number} · {request.customer_name || request.provider_name}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close" className="rounded-lg p-1.5 text-white/45 hover:bg-white/[0.06] hover:text-white">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="mx-auto mt-5 grid aspect-square w-full max-w-[260px] place-items-center rounded-xl bg-white p-3">
+          {qr ? <img src={qr} alt="QR code to pay this request" className="h-full w-full" /> : <Loader2 className="animate-spin text-black/40" />}
+        </div>
+        <p className="mt-4 text-center text-sm text-white/55">
+          They scan this in {brand.display_name} or with their phone camera and pay exactly {naira(request.amount_kobo)}. Your token comes to you by email and
+          on this page. It works once and expires in 7 days.
+        </p>
+        <div className="mt-5 grid grid-cols-2 gap-2">
+          <button type="button" onClick={() => void share()} className="flex h-11 items-center justify-center gap-2 rounded-xl bg-zener-gold text-sm font-bold text-black hover:brightness-110">
+            <Share2 size={16} /> Share
+          </button>
+          <button type="button" onClick={copy} className="flex h-11 items-center justify-center gap-2 rounded-xl bg-white/[0.07] text-sm font-bold hover:bg-white/[0.12]">
+            {copied ? <Check size={16} className="text-zener-success" /> : <Copy size={16} />} {copied ? 'Copied' : 'Copy link'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// RequestsCard lists the customer's recent requests on the buy page.
+function RequestsCard({ requests: list, onOpen }: { requests: PaymentRequest[]; onOpen: (r: PaymentRequest) => void }) {
+  if (!list.length) return null;
+  return (
+    <div className={`${card} p-6`}>
+      <p className="mb-2 text-xs font-semibold text-white/40">Payment requests</p>
+      <ul className="divide-y divide-white/[0.06]">
+        {list.slice(0, 4).map((r) => (
+          <li key={r.id}>
+            <button type="button" onClick={() => onOpen(r)} className="flex w-full items-center justify-between gap-3 py-2.5 text-left text-sm">
+              <span className="min-w-0">
+                <span className="block truncate text-white/80">{r.meter_number}</span>
+                <span className="block truncate text-xs text-white/35">
+                  {r.status === 'paid' && r.payer_name ? `Paid by ${r.payer_name}` : r.provider_name}
+                </span>
+              </span>
+              <span className="shrink-0 text-right">
+                <span className="block font-semibold">{naira(r.amount_kobo)}</span>
+                <span className={`block text-xs ${REQUEST_STATUS[r.status][1]}`}>{REQUEST_STATUS[r.status][0]}</span>
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// PayRequestPage is where a scanned request lands: the payer pays the exact
+// amount; the requester sees its status and, once paid, the token.
+function PayRequestPage({ code }: { code: string }) {
+  const { nav, walletKobo, refreshWallet } = useAcct();
+  const [req, setReq] = useState<PaymentRequest | null>(null);
+  const [error, setError] = useState('');
+  const [checkoutKind, setCheckoutKind] = useState<'transfer' | 'hosted'>('hosted');
+  const [method, setMethod] = useState<'checkout' | 'wallet'>('checkout');
+  const [paying, setPaying] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const idemKey = useRef(crypto.randomUUID());
+
+  const load = useCallback(() => {
+    requests
+      .get(code)
+      .then(setReq)
+      .catch((e) => setError(message(e)));
+  }, [code]);
+  useEffect(() => {
+    load();
+    guest
+      .discos()
+      .then((r) => setCheckoutKind(r.checkout === 'transfer' ? 'transfer' : 'hosted'))
+      .catch(() => undefined);
+  }, [load]);
+  // The requester's page updates by itself once someone pays.
+  useEffect(() => {
+    if (!req?.mine || (req.status !== 'open' && req.status !== 'paying')) return;
+    const t = window.setInterval(load, 8000);
+    return () => window.clearInterval(t);
+  }, [req?.mine, req?.status, load]);
+  useEffect(() => {
+    idemKey.current = crypto.randomUUID();
+  }, [method]);
+
+  if (error && !req) return <ErrorBox text={error} />;
+  if (!req) return <Spinner />;
+
+  const short = method === 'wallet' && walletKobo !== null && req.amount_kobo > walletKobo;
+  const pay = async () => {
+    setError('');
+    setPaying(true);
+    try {
+      const o = await requests.pay(code, { payment_method: method }, idemKey.current);
+      if (o.status === 'payment_pending' && o.checkout_url && !o.bank_transfer) {
+        window.location.assign(o.checkout_url);
+        return;
+      }
+      refreshWallet();
+      nav(`/order/${o.id}`);
+    } catch (e) {
+      setError(message(e));
+      setPaying(false);
+      load();
+    }
+  };
+
+  const details = (
+    <dl className={`${card} space-y-3 p-6 text-sm`}>
+      <SummaryRow label="Electricity company" value={req.provider_name} />
+      <SummaryRow label="Meter" value={`${req.meter_number} · ${req.meter_type}`} />
+      <SummaryRow label="Account name" value={req.customer_name} />
+      {req.note ? <SummaryRow label="Note" value={req.note} /> : null}
+      <div className="border-t border-white/[0.08] pt-3">
+        <SummaryRow label="Amount" value={naira(req.amount_kobo)} strong />
+      </div>
+    </dl>
+  );
+
+  if (req.mine) {
+    return (
+      <div className="mx-auto max-w-lg space-y-5">
+        <PageTitle title="Payment request" sub={`Created ${shortDate(req.created_at)}`} />
+        {req.status === 'paid' ? (
+          <div className="rounded-2xl border border-zener-success/30 bg-zener-success/[0.06] p-6 text-center">
+            <p className="text-sm text-white/60">{req.payer_name ? `${req.payer_name} paid your request` : 'Your request was paid'}</p>
+            {req.token ? (
+              <>
+                <p className="mt-3 font-mono text-2xl font-bold tracking-wider text-zener-gold">{req.token.replace(/(\d{4})(?=\d)/g, '$1-')}</p>
+                {req.energy_kwh ? <p className="mt-1 text-sm text-white/50">{req.energy_kwh.toFixed(1)} kWh</p> : null}
+                <div className="mt-3 flex justify-center">
+                  <CopyButton text={req.token} />
+                </div>
+              </>
+            ) : null}
+          </div>
+        ) : (
+          <div className="flex items-center gap-3 rounded-2xl border border-white/[0.07] p-6 text-sm text-white/60">
+            {req.status === 'open' || req.status === 'paying' ? <Loader2 size={18} className="animate-spin text-zener-gold" /> : null}
+            {req.status === 'open'
+              ? 'Waiting for someone to pay. This page updates by itself.'
+              : req.status === 'paying'
+                ? 'Someone is paying this now…'
+                : req.status === 'cancelled'
+                  ? 'You cancelled this request.'
+                  : 'This request expired before anyone paid it.'}
+          </div>
+        )}
+        {details}
+        {req.status === 'paid' && req.order_id ? (
+          <button type="button" onClick={() => nav(`/order/${req.order_id}`)} className="flex h-12 w-full items-center justify-center rounded-xl border border-white/[0.1] text-sm font-semibold text-white/80 hover:border-white/25 hover:text-white">
+            View receipt
+          </button>
+        ) : null}
+        {req.status === 'open' ? (
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => setSharing(true)} className="flex h-12 items-center justify-center gap-2 rounded-xl bg-zener-gold text-sm font-bold text-black hover:brightness-110">
+              <QrCode size={16} /> Show QR
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                window.confirm('Cancel this request? The QR code will stop working.') &&
+                requests
+                  .cancel(code)
+                  .then(setReq)
+                  .catch((e) => setError(message(e)))
+              }
+              className="flex h-12 items-center justify-center rounded-xl border border-white/[0.1] text-sm font-semibold text-white/70 hover:border-zener-danger/50 hover:text-zener-danger"
+            >
+              Cancel request
+            </button>
+          </div>
+        ) : null}
+        {error ? <ErrorBox text={error} /> : null}
+        {sharing ? <RequestQrDialog request={req} onClose={() => setSharing(false)} /> : null}
+      </div>
+    );
+  }
+
+  const closed = req.status !== 'open' && !(req.status === 'paying' && req.paid_by_me);
+  return (
+    <div className="mx-auto max-w-lg space-y-5">
+      <PageTitle title={`Pay for ${req.requester_name || 'their'}${req.requester_name ? "'s" : ''} electricity`} sub={`${req.requester_name || 'Someone'} asked you to pay ${naira(req.amount_kobo)}.`} />
+      {details}
+      {closed ? (
+        <div className="rounded-2xl border border-white/[0.07] p-6 text-sm text-white/60">
+          {req.status === 'paid'
+            ? req.paid_by_me
+              ? 'You paid this request. Thank you!'
+              : 'This request has already been paid.'
+            : req.status === 'paying'
+              ? 'Someone is paying this request right now.'
+              : req.status === 'cancelled'
+                ? 'This request was cancelled.'
+                : 'This request has expired. Ask for a new one.'}
+          {req.paid_by_me && req.order_id ? (
+            <button type="button" onClick={() => nav(`/order/${req.order_id}`)} className="mt-3 block font-semibold text-zener-gold hover:underline">
+              View your receipt
+            </button>
+          ) : null}
+        </div>
+      ) : (
+        <div className={`${card} space-y-5 p-6`}>
+          <Field label="Pay with">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <MethodOption
+                active={method === 'checkout'}
+                onClick={() => setMethod('checkout')}
+                title={checkoutKind === 'transfer' ? 'Bank transfer' : 'Card, transfer or USSD'}
+                sub={checkoutKind === 'transfer' ? 'Pay from any bank app' : 'Secure checkout'}
+              />
+              <MethodOption active={method === 'wallet'} onClick={() => setMethod('wallet')} title="Wallet" sub={walletKobo === null ? 'Balance —' : `Balance ${naira(walletKobo)}`} />
+            </div>
+            {short ? (
+              <p className="mt-2 text-sm text-yellow-300/90">
+                Your wallet balance is too low.{' '}
+                <button type="button" onClick={() => nav('/wallet')} className="font-semibold text-zener-gold hover:underline">
+                  Fund wallet
+                </button>
+              </p>
+            ) : null}
+          </Field>
+          {error ? <p className="rounded-lg bg-zener-danger/10 px-3.5 py-2.5 text-sm text-zener-danger">{error}</p> : null}
+          <button
+            type="button"
+            disabled={paying || short}
+            onClick={() => void pay()}
+            className="flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-zener-gold text-[15px] font-bold text-black transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {paying && <Loader2 size={18} className="animate-spin" />}
+            {paying ? 'Starting payment…' : `Pay ${naira(req.amount_kobo + (method === 'checkout' ? req.fee_kobo : 0))}`}
+          </button>
+          <p className="flex items-center justify-center gap-1.5 text-center text-xs text-white/35">
+            <Lock size={12} /> The token goes to {req.requester_name || 'them'}; you get the receipt.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
