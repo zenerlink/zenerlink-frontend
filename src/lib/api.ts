@@ -504,7 +504,33 @@ export const staff = {
   resolveRecon: (id: string, note: string) => request<void>('POST', `/v1/admin/reconciliation/items/${encodeURIComponent(id)}/resolve`, { note }),
   disputes: (status = '') => request<{ disputes: Dispute[] }>('GET', `/v1/admin/disputes?status=${encodeURIComponent(status)}`),
   resolveDispute: (id: string, resolution: string) => request<void>('POST', `/v1/admin/disputes/${encodeURIComponent(id)}/resolve`, { resolution }),
+  stuck: () => request<{ purchases: StuckPurchase[] }>('GET', '/v1/admin/stuck'),
+  checkStuck: (id: string) => request<StuckResult>('POST', `/v1/admin/stuck/${encodeURIComponent(id)}/check`),
+  enterToken: (id: string, input: { token: string; kwh: number; note: string }) =>
+    request<StuckResult>('POST', `/v1/admin/stuck/${encodeURIComponent(id)}/token`, input),
+  refundStuck: (id: string, note: string) => request<StuckResult>('POST', `/v1/admin/stuck/${encodeURIComponent(id)}/refund`, { note }),
 };
+
+// A paid electricity purchase the DisCo hasn't answered.
+export type StuckPurchase = {
+  id: string;
+  status: 'vending' | 'needs_review';
+  reason: string;
+  provider: string;
+  disco_code: string;
+  disco_name: string;
+  meter_number: string;
+  meter_type: string;
+  customer_name: string;
+  customer_email: string;
+  amount_kobo: number;
+  energy_kwh: number;
+  attempts: number;
+  auto_check: boolean;
+  created_at: string;
+  updated_at: string;
+};
+export type StuckResult = { status: string; message: string };
 
 // ---- Airtime, data and cable TV (paid from the wallet) ----
 export type BillCategory = 'airtime' | 'data' | 'cable';

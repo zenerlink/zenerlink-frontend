@@ -3135,7 +3135,8 @@ function Empty({ text, action, onAction }: { text: string; action: string; onAct
 // Order / token
 // ---------------------------------------------------------------------------
 
-const FINAL = ['vended', 'delivered', 'refunded', 'payment_failed', 'needs_review'];
+// needs_review isn't final for the customer: we keep asking the DisCo for 24 hours.
+const FINAL = ['vended', 'delivered', 'refunded', 'payment_failed'];
 
 function OrderPage({ id }: { id: string }) {
   const { nav, refreshWallet } = useAcct();
@@ -3216,7 +3217,8 @@ function OrderView({
         setOrder(o);
         loadedRef.current?.(o);
         if (FINAL.includes(o.status)) finalRef.current?.();
-        else if (attempt < (o.bank_transfer ? 400 : 100)) timer = window.setTimeout(() => void poll(attempt + 1), 3000);
+        // Every 3 seconds at first; a slow DisCo can take hours, so then every 30.
+        else timer = window.setTimeout(() => void poll(attempt + 1), attempt < (o.bank_transfer ? 400 : 100) ? 3000 : 30000);
       } catch (e) {
         if (!stop) setError(message(e));
       }

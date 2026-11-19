@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, ExternalLink, Loader2, RotateCcw, Search } from 'lucide-react';
 import { OPS_URL, money, nairaToKobo, staff } from '../lib/api';
-import type { Bank, Dispute, PaymentForRefund, Payout, ReconItem, ReconRun } from '../lib/api';
+import type { Bank, Dispute, PaymentForRefund, Payout, ReconItem, ReconRun, StuckPurchase } from '../lib/api';
 import { askConfirm } from './confirm';
 import { ErrorBox, Field, PageTitle, Spinner, card, inputCls, message, naira, shortDate } from './kit';
 import { BankPicker, PayoutPill } from './money';
@@ -11,9 +11,10 @@ import { BankPicker, PayoutPill } from './money';
 
 export const isStaff = (role: string) => ['tenant_admin', 'tenant_staff', 'platform_admin'].includes(role);
 
-type Tab = 'payouts' | 'refund' | 'recon' | 'disputes';
+type Tab = 'payouts' | 'stuck' | 'refund' | 'recon' | 'disputes';
 const TABS: [Tab, string][] = [
   ['payouts', 'Withdrawals'],
+  ['stuck', 'Stuck purchases'],
   ['refund', 'Refund'],
   ['recon', 'Reconciliation'],
   ['disputes', 'Reports'],
@@ -33,7 +34,7 @@ export function StaffPage({ role }: { role: string }) {
     <>
       <PageTitle
         title="Staff"
-        sub="Withdrawals, refunds, the daily bank check and payment reports."
+        sub="Withdrawals, stuck purchases, refunds, the daily bank check and payment reports."
         action={
           role === 'platform_admin' ? (
             <a
@@ -61,7 +62,7 @@ export function StaffPage({ role }: { role: string }) {
           ))}
         </div>
       </div>
-      {tab === 'payouts' ? <PayoutsTab /> : tab === 'refund' ? <RefundTab /> : tab === 'recon' ? <ReconTab /> : <DisputesTab />}
+      {tab === 'payouts' ? <PayoutsTab /> : tab === 'stuck' ? <StuckTab admin={role !== 'tenant_staff'} /> : tab === 'refund' ? <RefundTab /> : tab === 'recon' ? <ReconTab /> : <DisputesTab />}
     </>
   );
 }
@@ -208,6 +209,150 @@ function PayoutsTab() {
         </ul>
       )}
     </div>
+  );
+}
+
+const ago = (iso: string) => {
+  const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  return m < 60 ? `${m} min` : m < 2880 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${Math.floor(m / 1440)} days`;
+};
+
+// StuckTab: paid electricity purchases the DisCo hasn't answered. The system
+// keeps asking for 24 hours; staff can ask now, enter a token, or refund.
+function StuckTab({ admin }: { admin: boolean }) {
+  const [list, setList] = useState<StuckPurchase[] | null>(null);
+  const [error, setError] = useState('');
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState('');
+  const [tokenFor, setTokenFor] = useState('');
+  const load = useCallback(() => {
+    staff
+      .stuck()
+      .then((r) => setList(r.purchases))
+      .catch((e) => setError(message(e)));
+  }, []);
+  useEffect(() => {
+    load();
+    const t = window.setInterval(load, 30000);
+    return () => window.clearInterval(t);
+  }, [load]);
+
+  const run = async (id: string, f: () => Promise<{ message: string }>) => {
+    setError('');
+    setBusy(id);
+    try {
+      const r = await f();
+      setNotes((n) => ({ ...n, [id]: r.message }));
+      setTokenFor('');
+      load();
+    } catch (e) {
+      setNotes((n) => ({ ...n, [id]: message(e) }));
+    } finally {
+      setBusy('');
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-white/50">
+        Paid, but no token yet. We ask the DisCo every 30 seconds, then every 5 minutes for 24 hours after it goes to review, so most of these settle by themselves.
+      </p>
+      {error ? <ErrorBox text={error} /> : null}
+      {list === null ? (
+        <Spinner />
+      ) : list.length === 0 ? (
+        <p className={`${card} px-6 py-10 text-center text-sm text-white/45`}>No stuck purchases.</p>
+      ) : (
+        <ul className="space-y-3">
+          {list.map((p) => (
+            <li key={p.id} className={`${card} space-y-3 p-5`}>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-lg font-black">{naira(p.amount_kobo)}</p>
+                  <p className="truncate text-sm text-white/70">
+                    {p.customer_name || p.customer_email}
+                    <span className="text-white/35"> · {p.customer_email}</span>
+                  </p>
+                </div>
+                <span
+                  className={`inline-block rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+                    p.status === 'needs_review' ? 'bg-zener-danger/15 text-zener-danger' : 'bg-zener-gold/15 text-zener-gold'
+                  }`}
+                >
+                  {p.status === 'needs_review' ? 'In review' : 'Waiting on DisCo'}
+                </span>
+              </div>
+              <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+                <Row label="DisCo" value={p.disco_name || p.disco_code} />
+                <Row label="Meter" value={`${p.meter_number} · ${p.meter_type}`} />
+                <Row label="Waiting" value={`${ago(p.created_at)} · since ${shortDate(p.created_at)}`} />
+                <Row label="Reference" value={p.id.slice(0, 8).toUpperCase()} mono />
+                <Row label="Auto check" value={p.auto_check ? 'On' : 'Stopped, needs a person'} />
+                <Row label="Route" value={p.provider} />
+              </dl>
+              {p.reason ? <p className="text-xs text-white/45">Reason: {p.reason}</p> : null}
+              {notes[p.id] ? <p className="rounded-lg bg-white/[0.05] px-3 py-2 text-xs text-white/75">{notes[p.id]}</p> : null}
+              <div className="flex flex-wrap gap-2 border-t border-white/[0.06] pt-3">
+                <button type="button" disabled={busy === p.id} className={goldBtn} onClick={() => void run(p.id, () => staff.checkStuck(p.id))}>
+                  {busy === p.id ? <Loader2 size={14} className="animate-spin" /> : 'Check again'}
+                </button>
+                {admin ? (
+                  <>
+                    <button type="button" className={plainBtn} onClick={() => setTokenFor(tokenFor === p.id ? '' : p.id)}>
+                      Enter token manually
+                    </button>
+                    {p.status === 'needs_review' ? (
+                      <NoteAction
+                        label="Refund"
+                        danger
+                        placeholder="Why? e.g. DisCo confirmed no token"
+                        onSubmit={async (n) => {
+                          if (await askConfirm({ title: `Refund ${naira(p.amount_kobo)}?`, message: `It goes back to ${p.customer_email}'s wallet.`, confirmLabel: 'Refund', danger: true }))
+                            await run(p.id, () => staff.refundStuck(p.id, n));
+                        }}
+                      />
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
+              {tokenFor === p.id ? <TokenForm busy={busy === p.id} onSubmit={(i) => run(p.id, () => staff.enterToken(p.id, i))} /> : null}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function TokenForm({ busy, onSubmit }: { busy: boolean; onSubmit: (i: { token: string; kwh: number; note: string }) => Promise<void> }) {
+  const [token, setToken] = useState('');
+  const [kwh, setKwh] = useState('');
+  const [note, setNote] = useState('');
+  const digits = token.replace(/\D/g, '');
+  const ok = digits.length === 20 && Number(kwh) > 0 && note.trim() !== '';
+  return (
+    <form
+      className="space-y-3 rounded-xl bg-white/[0.03] p-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (ok) void onSubmit({ token: digits, kwh: Number(kwh), note: note.trim() });
+      }}
+    >
+      <div className="grid gap-3 sm:grid-cols-[1fr_140px]">
+        <Field label="Token">
+          <input value={token} onChange={(e) => setToken(e.target.value)} inputMode="numeric" placeholder="20 digits" className={`${inputCls} font-mono`} />
+        </Field>
+        <Field label="Units (kWh)">
+          <input value={kwh} onChange={(e) => setKwh(e.target.value.replace(/[^\d.]/g, ''))} inputMode="decimal" placeholder="0.0" className={inputCls} />
+        </Field>
+      </div>
+      <Field label="Where it came from">
+        <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Payrep dashboard, AEDC support" className={inputCls} />
+      </Field>
+      <button type="submit" disabled={busy || !ok} className={`${goldBtn} h-10 w-full sm:w-auto sm:px-5`}>
+        {busy ? <Loader2 size={14} className="animate-spin" /> : 'Give this token to the customer'}
+      </button>
+    </form>
   );
 }
 
