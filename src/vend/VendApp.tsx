@@ -263,10 +263,14 @@ const firstName = (u: User) => (u.name || '').trim().split(/\s+/)[0] || '';
 // Signed-in shell: header with wallet, sidebar navigation
 // ---------------------------------------------------------------------------
 
-const NAV: [string, string, (p: { size?: number }) => React.ReactNode][] = [
-  ['/', 'Buy electricity', ZMark],
+// Electricity is the product; airtime and TV sit below it under "More".
+const MORE_NAV: [string, string, (p: { size?: number }) => React.ReactNode][] = [
   ['/airtime', 'Airtime & data', Smartphone],
   ['/tv', 'Cable TV', Tv],
+];
+
+const NAV: [string, string, (p: { size?: number }) => React.ReactNode][] = [
+  ['/', 'Buy electricity', ZMark],
   ['/transactions', 'Transactions', Receipt],
   ['/meters', 'My meters', Gauge],
   ['/wallet', 'Wallet', Wallet],
@@ -361,7 +365,8 @@ function Shell({ children }: { children: React.ReactNode }) {
                     <p className="truncate text-xs text-white/45">{user.email}</p>
                   </div>
                   <a {...link('/profile')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Profile</a>
-                  <a {...link('/meters')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">My meters</a>
+                  <a {...link('/airtime')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Airtime & data</a>
+                  <a {...link('/tv')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Cable TV</a>
                   <a {...link('/transactions')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Transactions</a>
                   <a {...link('/password')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Change password</a>
                   <a {...link('/help')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Help</a>
@@ -391,6 +396,18 @@ function Shell({ children }: { children: React.ReactNode }) {
                 }`}
               >
                 <Icon size={17} /> {label}
+              </a>
+            ))}
+            <p className="px-3.5 pb-1 pt-5 text-[11px] font-semibold uppercase tracking-wider text-white/30">More</p>
+            {MORE_NAV.map(([to, label, Icon]) => (
+              <a
+                key={to}
+                {...link(to)}
+                className={`flex items-center gap-3 rounded-xl px-3.5 py-2 text-sm font-medium transition ${
+                  isActive(path, to) ? 'bg-zener-gold/[0.12] text-zener-gold' : 'text-white/45 hover:bg-white/[0.04] hover:text-white'
+                }`}
+              >
+                <Icon size={16} /> {label}
               </a>
             ))}
             <button
@@ -434,10 +451,10 @@ function Shell({ children }: { children: React.ReactNode }) {
 
 const MOBILE_NAV: [string, string, (p: { size?: number }) => React.ReactNode][] = [
   ['/', 'Buy', ZMark],
-  ['/airtime', 'Airtime', Smartphone],
-  ['/tv', 'TV', Tv],
   ['/transactions', 'History', Receipt],
+  ['/meters', 'Meters', Gauge],
   ['/wallet', 'Wallet', Wallet],
+  ['/profile', 'Account', UserRound],
 ];
 
 function PageTitle({ title, sub, action }: { title: string; sub?: string; action?: React.ReactNode }) {
