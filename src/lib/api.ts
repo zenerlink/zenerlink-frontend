@@ -240,6 +240,8 @@ export const api = {
       { amount_kobo, method, ...(callback_url ? { callback_url } : {}) },
       idem(),
     ),
+  // The customer's own account number for funding the wallet by transfer.
+  walletAccount: () => request<BankTransfer & { sandbox: boolean }>('GET', '/v1/wallet/account'),
   walletActivity: (limit = 30) => request<WalletActivity>('GET', `/v1/wallet/activity?limit=${limit}`),
   meters: () => request<{ meters: ApiMeter[] }>('GET', '/v1/meters'),
   validateMeter: (provider_code: string, meter_number: string) =>
@@ -278,13 +280,19 @@ export type GuestOrder = {
   energy_kwh: number;
   token: string | null;
   checkout_url?: string;
+  // Set while a bank-transfer checkout waits for the customer's transfer.
+  bank_transfer?: BankTransfer;
   sandbox: boolean;
   message?: string;
   created_at: string;
 };
 
+export type BankTransfer = { bank_name: string; account_number: string; account_name: string; amount_kobo?: number; expires_at?: string };
+
 export const guest = {
-  discos: () => raw<{ discos: Disco[]; delivery_channels?: DeliveryChannel[] }>('GET', '/v1/public/discos', undefined, { 'X-Tenant': TENANT }),
+  // checkout: "transfer" = pay into an account number, "hosted" = a payment page.
+  discos: () =>
+    raw<{ discos: Disco[]; delivery_channels?: DeliveryChannel[]; checkout?: 'transfer' | 'hosted' }>('GET', '/v1/public/discos', undefined, { 'X-Tenant': TENANT }),
   tokenShare: (code: string) => raw<SharedToken>('GET', `/v1/public/token-shares/${encodeURIComponent(code)}`, undefined, { 'X-Tenant': TENANT }),
   revealTokenShare: (code: string) =>
     raw<SharedToken>('POST', `/v1/public/token-shares/${encodeURIComponent(code)}/reveal`, undefined, { 'X-Tenant': TENANT }),

@@ -30,7 +30,7 @@ import { brandedQr, brandedQrUrl } from './qr';
 import { discoLogo } from '../assets/discos';
 import logo from '../assets/logo-icon-white.svg';
 import { ApiError, IS_PRODUCTION, account, api, guest, koboToNaira, nairaToKobo, setSignedOutHandler } from '../lib/api';
-import type { ApiMeter, Branding, DeliveryChannel, Disco, GuestOrder, PublicMeter, User, WalletActivity, WalletEntry } from '../lib/api';
+import type { ApiMeter, BankTransfer, Branding, DeliveryChannel, Disco, GuestOrder, PublicMeter, User, WalletActivity, WalletEntry } from '../lib/api';
 import { BrandContext, fallbackBranding, useBrand } from '../lib/brand';
 import { applyBranding } from '../lib/theme';
 import { formatCurrency } from '../lib/format';
@@ -459,6 +459,7 @@ function BuyPage({
   const { user, nav, walletKobo, refreshWallet } = useAcct();
   const [discos, setDiscos] = useState<Disco[]>([]);
   const [channels, setChannels] = useState<DeliveryChannel[]>([]);
+  const [checkoutKind, setCheckoutKind] = useState<'transfer' | 'hosted'>('hosted');
   const [deliver, setDeliver] = useState<Record<DeliveryChannel, boolean>>({ email: true, sms: false, whatsapp: false });
   const [deliverPhone, setDeliverPhone] = useState('');
   // Email always goes out; only SMS and WhatsApp are opt-in.
@@ -490,6 +491,7 @@ function BuyPage({
       .then((r) => {
         setDiscos(r.discos);
         setChannels(r.delivery_channels ?? []);
+        setCheckoutKind(r.checkout === 'transfer' ? 'transfer' : 'hosted');
         setProvider(
           (p) => r.discos.find((d) => d.provider_code === p)?.provider_code || r.discos.find((d) => d.provider_code === 'IKEDC')?.provider_code || r.discos[0]?.provider_code || '',
         );
@@ -575,7 +577,7 @@ function BuyPage({
         },
         idemKey.current,
       );
-      if (o.status === 'payment_pending' && o.checkout_url) {
+      if (o.status === 'payment_pending' && o.checkout_url && !o.bank_transfer) {
         window.location.assign(o.checkout_url);
         return;
       }
@@ -704,7 +706,12 @@ function BuyPage({
 
           <Field label="Pay with">
             <div className="grid gap-2 sm:grid-cols-2">
-              <MethodOption active={method === 'checkout'} onClick={() => setMethod('checkout')} title="Card, transfer or USSD" sub={`Secure checkout${feeNote('checkout')}`} />
+              <MethodOption
+                active={method === 'checkout'}
+                onClick={() => setMethod('checkout')}
+                title={checkoutKind === 'transfer' ? 'Bank transfer' : 'Card, transfer or USSD'}
+                sub={`${checkoutKind === 'transfer' ? 'Pay from any bank app' : 'Secure checkout'}${feeNote('checkout')}`}
+              />
               <MethodOption
                 active={method === 'wallet'}
                 onClick={() => setMethod('wallet')}
@@ -1491,6 +1498,43 @@ function QuickAction({ label, icon, onClick }: { label: string; icon: React.Reac
 }
 
 function FundWallet({ inputRef, funded, onFunded }: { inputRef: React.RefObject<HTMLInputElement>; funded: boolean; onFunded: () => void }) {
+  // Funding by transfer to the customer's own account number, when the bank side is on.
+  const [own, setOwn] = useState<BankTransfer | null | undefined>(undefined);
+  useEffect(() => {
+    let stop = false;
+    api
+      .walletAccount()
+      .then((a) => !stop && setOwn(a))
+      .catch(() => !stop && setOwn(null));
+    return () => {
+      stop = true;
+    };
+  }, []);
+  // A transfer is credited by the bank's notification: refresh the balance meanwhile.
+  const fundedRef = useRef(onFunded);
+  fundedRef.current = onFunded;
+  useEffect(() => {
+    if (!own) return;
+    const t = window.setInterval(() => fundedRef.current(), 15000);
+    return () => window.clearInterval(t);
+  }, [own]);
+  if (own === undefined) return <section className={`${card} p-5`}><Spinner /></section>;
+  if (own) {
+    return (
+      <section className={`${card} space-y-4 p-5`}>
+        <div>
+          <h2 className="text-base font-bold">Fund wallet</h2>
+          <p className="mt-1 text-sm text-white/45">Transfer any amount to your own Zenerlink account:</p>
+        </div>
+        <TransferDetails transfer={own} waiting={false} />
+        <p className="text-xs text-white/35">Money arrives in your wallet within seconds. A small bank fee may apply.</p>
+      </section>
+    );
+  }
+  return <FundByCheckout inputRef={inputRef} funded={funded} onFunded={onFunded} />;
+}
+
+function FundByCheckout({ inputRef, funded, onFunded }: { inputRef: React.RefObject<HTMLInputElement>; funded: boolean; onFunded: () => void }) {
   const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -1846,7 +1890,7 @@ function OrderView({
         setOrder(o);
         loadedRef.current?.(o);
         if (FINAL.includes(o.status)) finalRef.current?.();
-        else if (attempt < 100) timer = window.setTimeout(() => void poll(attempt + 1), 3000);
+        else if (attempt < (o.bank_transfer ? 400 : 100)) timer = window.setTimeout(() => void poll(attempt + 1), 3000);
       } catch (e) {
         if (!stop) setError(message(e));
       }
@@ -1862,13 +1906,22 @@ function OrderView({
   if (!order) return <Spinner />;
   const done = order.status === 'vended' || order.status === 'delivered';
   const pending = !FINAL.includes(order.status);
+  const transfer = pending ? order.bank_transfer : undefined;
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-black tracking-tight sm:text-[28px]">{done ? 'Your token is ready' : pending ? 'Almost there' : 'Purchase update'}</h1>
+        <h1 className="text-2xl font-black tracking-tight sm:text-[28px]">
+          {done ? 'Your token is ready' : transfer ? `Transfer ${naira(transfer.amount_kobo ?? order.amount_kobo)}` : pending ? 'Almost there' : 'Purchase update'}
+        </h1>
         <p className="mt-1 text-sm text-white/45">
-          {done ? 'Enter the 20-digit token on your meter keypad to load the units.' : pending ? 'This page updates automatically.' : order.message}
+          {done
+            ? 'Enter the 20-digit token on your meter keypad to load the units.'
+            : transfer
+              ? 'to complete your order'
+              : pending
+                ? 'This page updates automatically.'
+                : order.message}
         </p>
       </div>
       {done && order.token ? (
@@ -1890,6 +1943,8 @@ function OrderView({
         </div>
       ) : done ? (
         <p className="rounded-2xl border border-zener-success/30 bg-zener-success/[0.06] p-6 text-sm">Your postpaid bill payment was received.</p>
+      ) : transfer ? (
+        <TransferDetails transfer={transfer} note={order.message} />
       ) : pending ? (
         <div className="flex items-center gap-3 rounded-2xl border border-white/[0.07] p-6 text-sm text-white/60">
           <Loader2 size={18} className="animate-spin text-zener-gold" /> {order.message || 'Processing…'}
@@ -1928,6 +1983,68 @@ function OrderView({
     </div>
   );
 }
+
+// TransferDetails is an account to pay into: the one-time account for an
+// order (with its countdown) or the customer's own wallet account.
+function TransferDetails({ transfer, note, waiting = true }: { transfer: BankTransfer; note?: string; waiting?: boolean }) {
+  const left = useCountdown(transfer.expires_at);
+  return (
+    <div className={`${card} space-y-3 p-6 text-sm`}>
+      <SummaryRow label="Bank" value={transfer.bank_name} />
+      <div className="flex items-center justify-between gap-4">
+        <span className="text-white/45">Account no.</span>
+        <span className="flex items-center gap-2">
+          <span className="font-mono text-base font-bold tracking-wide">{groupAccount(transfer.account_number)}</span>
+          <CopyButton text={transfer.account_number} />
+        </span>
+      </div>
+      <SummaryRow label="Name" value={transfer.account_name} />
+      {left !== null || note ? (
+        <div className="space-y-1 border-t border-white/[0.08] pt-3 text-white/60">
+          {left !== null ? <p className="font-semibold text-white">{left > 0 ? `Expires in ${mmss(left)}` : 'This account has expired'}</p> : null}
+          {note ? <p>{note}</p> : null}
+        </div>
+      ) : null}
+      {waiting && (left === null || left > 0) ? (
+        <p className="flex items-center gap-2 text-white/60">
+          <Loader2 size={16} className="animate-spin text-zener-gold" /> Waiting for your transfer…
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        void navigator.clipboard?.writeText(text);
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 2000);
+      }}
+      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-white/10 px-2.5 text-xs font-semibold hover:border-white/25"
+    >
+      {copied ? <Check size={13} className="text-zener-success" /> : <Copy size={13} />} {copied ? 'Copied' : 'Copy'}
+    </button>
+  );
+}
+
+// Seconds until the ISO time, ticking each second; null without a time.
+function useCountdown(until?: string) {
+  const end = until ? Date.parse(until) : NaN;
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (Number.isNaN(end)) return;
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, [end]);
+  return Number.isNaN(end) ? null : Math.max(0, Math.floor((end - now) / 1000));
+}
+
+const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+const groupAccount = (n: string) => (n.length === 10 ? `${n.slice(0, 4)} ${n.slice(4, 7)} ${n.slice(7)}` : n);
 
 const actionBtn =
   'flex h-11 items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] text-sm font-bold hover:border-white/20 disabled:opacity-50';
