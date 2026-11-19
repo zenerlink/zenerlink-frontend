@@ -30,7 +30,7 @@ import { brandedQr, brandedQrUrl } from './qr';
 import { discoLogo } from '../assets/discos';
 import logo from '../assets/logo-icon-white.svg';
 import { ApiError, IS_PRODUCTION, account, api, guest, koboToNaira, nairaToKobo, setSignedOutHandler } from '../lib/api';
-import type { ApiMeter, BankTransfer, Branding, DeliveryChannel, Disco, GuestOrder, PublicMeter, User, WalletActivity, WalletEntry } from '../lib/api';
+import type { ApiMeter, BankTransfer, Branding, DeliveryChannel, Disco, GuestOrder, PublicMeter, Schedule, User, WalletActivity, WalletEntry } from '../lib/api';
 import { BrandContext, fallbackBranding, useBrand } from '../lib/brand';
 import { applyBranding } from '../lib/theme';
 import { formatCurrency } from '../lib/format';
@@ -475,9 +475,22 @@ function BuyPage({
   // "Buy again" passes the last amount (whole naira).
   const [amount, setAmount] = useState(() => (prefillAmount && /^\d{1,7}$/.test(prefillAmount) ? prefillAmount : ''));
   const [method, setMethod] = useState<'checkout' | 'wallet'>(payWallet ? 'wallet' : 'checkout');
+  // Auto-buy: repeat this purchase from the wallet every week or month.
+  const [repeat, setRepeat] = useState<'once' | 'weekly' | 'monthly'>('once');
+  const [weekday, setWeekday] = useState(() => new Date().getDay());
+  const [monthDay, setMonthDay] = useState(() => Math.min(new Date().getDate(), 28));
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [scheduled, setScheduled] = useState('');
   const [error, setError] = useState('');
   const [paying, setPaying] = useState(false);
   const idemKey = useRef(crypto.randomUUID());
+  const repeating = repeat !== 'once';
+  const loadSchedules = useCallback(() => {
+    account
+      .schedules()
+      .then((r) => setSchedules(r.schedules))
+      .catch(() => undefined);
+  }, []);
 
   const pickSaved = (m: ApiMeter) => {
     setProvider(m.provider_code);
@@ -510,12 +523,14 @@ function BuyPage({
       .orders(100)
       .then((r) => setRecent(r.orders))
       .catch(() => undefined);
-  }, [meterId]);
+    loadSchedules();
+  }, [meterId, loadSchedules]);
 
   // A changed form is a new purchase (new idempotency key).
   useEffect(() => {
     idemKey.current = crypto.randomUUID();
-  }, [provider, meterType, meterNumber, amount, method]);
+    setScheduled('');
+  }, [provider, meterType, meterNumber, amount, method, repeat, weekday, monthDay]);
 
   // Verify automatically once the meter number looks complete.
   useEffect(() => {
@@ -547,15 +562,46 @@ function BuyPage({
   const fee = disco ? koboToNaira(disco.service_fee_kobo) : 0;
   // Convenience fee by payment method, added on top of the electricity amount.
   const feeFor = (m: 'checkout' | 'wallet') => koboToNaira((m === 'wallet' ? disco?.wallet_fee_kobo : disco?.checkout_fee_kobo) ?? 0);
-  const methodFee = feeFor(method);
+  const methodFee = feeFor(repeating ? 'wallet' : method);
   const amountOk = Number.isFinite(value) && value >= minNaira && value <= maxNaira;
   const total = amountOk ? value + methodFee : value;
-  const walletShort = method === 'wallet' && walletKobo !== null && amountOk && nairaToKobo(total) > walletKobo;
+  const walletShort = !repeating && method === 'wallet' && walletKobo !== null && amountOk && nairaToKobo(total) > walletKobo;
   const feeNote = (m: 'checkout' | 'wallet') => (feeFor(m) > 0 ? ` · ₦${feeFor(m).toLocaleString('en-NG')} fee` : feeFor(m === 'wallet' ? 'checkout' : 'wallet') > 0 ? ' · No fee' : '');
   const ready = !!meter?.verified && amountOk && !walletShort;
   const kwh = disco ? estimateKwh(disco, value) : 0;
 
+  const repeatDay = repeat === 'weekly' ? weekday : monthDay;
+  const repeatLabel = repeating ? repeatText(repeat, repeatDay) : '';
+  const repeatWhen = repeating ? repeatPhrase(repeat, repeatDay) : '';
+
+  const schedule = async () => {
+    setError('');
+    if (!meter?.verified) return setError('Enter a meter number we can verify.');
+    if (!amountOk) return setError(`Enter an amount between ${formatCurrency(minNaira)} and ${formatCurrency(maxNaira)}.`);
+    setPaying(true);
+    try {
+      const sc = await account.createSchedule(
+        {
+          provider_code: provider,
+          meter_number: meterNumber,
+          meter_type: meterType,
+          amount_kobo: nairaToKobo(value),
+          frequency: repeat as 'weekly' | 'monthly',
+          day: repeat === 'weekly' ? weekday : monthDay,
+        },
+        idemKey.current,
+      );
+      setScheduled(`Auto-buy is on. First purchase ${formatRunDate(sc.next_run_at)}.`);
+      loadSchedules();
+    } catch (e) {
+      setError(message(e));
+    } finally {
+      setPaying(false);
+    }
+  };
+
   const pay = async () => {
+    if (repeating) return schedule();
     setError('');
     if (!meter?.verified) return setError('Enter a meter number we can verify.');
     if (!amountOk) return setError(`Enter an amount between ${formatCurrency(minNaira)} and ${formatCurrency(maxNaira)}.`);
@@ -704,28 +750,86 @@ function BuyPage({
             ) : null}
           </Field>
 
-          <Field label="Pay with">
-            <div className="grid gap-2 sm:grid-cols-2">
-              <MethodOption
-                active={method === 'checkout'}
-                onClick={() => setMethod('checkout')}
-                title={checkoutKind === 'transfer' ? 'Bank transfer' : 'Card, transfer or USSD'}
-                sub={`${checkoutKind === 'transfer' ? 'Pay from any bank app' : 'Secure checkout'}${feeNote('checkout')}`}
-              />
-              <MethodOption
-                active={method === 'wallet'}
-                onClick={() => setMethod('wallet')}
-                title="Wallet"
-                sub={`${walletKobo === null ? 'Balance —' : `Balance ${naira(walletKobo)}`}${feeNote('wallet')}`}
-              />
-            </div>
-            {walletShort ? (
-              <p className="mt-2 text-sm text-yellow-300/90">
-                Your wallet balance is too low.{' '}
-                <button type="button" onClick={() => nav('/wallet')} className="font-semibold text-zener-gold hover:underline">Fund wallet</button>
+          <Field label="How often">
+            <Segmented
+              value={repeat}
+              onChange={setRepeat}
+              options={[
+                ['once', 'Just now'],
+                ['weekly', 'Every week'],
+                ['monthly', 'Every month'],
+              ]}
+            />
+            {repeat === 'weekly' ? (
+              <div className="mt-2.5 grid grid-cols-7 gap-2">
+                {WEEKDAYS.map((d, i) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setWeekday(i)}
+                    className={`rounded-lg border py-2 text-xs font-semibold transition ${
+                      weekday === i ? 'border-zener-gold/60 bg-zener-gold/10 text-zener-gold' : 'border-white/[0.08] text-white/55 hover:border-white/20 hover:text-white'
+                    }`}
+                  >
+                    {d.slice(0, 3)}
+                  </button>
+                ))}
+              </div>
+            ) : repeat === 'monthly' ? (
+              <select value={monthDay} onChange={(e) => setMonthDay(Number(e.target.value))} className={`${inputCls} mt-2.5`}>
+                {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+                  <option key={d} value={d} className="bg-zener-surface">
+                    On the {ordinal(d)} of every month
+                  </option>
+                ))}
+              </select>
+            ) : null}
+            {repeating ? (
+              <p className="mt-2 text-xs text-white/35">
+                We buy from your wallet at 8:00 am {repeatWhen} and email your token. If your balance is low, we remind you the day before.
               </p>
             ) : null}
           </Field>
+
+          {repeating ? (
+            <Field label="Pay with">
+              <MethodOption
+                active
+                onClick={() => undefined}
+                title="Wallet"
+                sub={`${walletKobo === null ? 'Balance —' : `Balance ${naira(walletKobo)}`}${feeNote('wallet')}`}
+              />
+              {walletKobo !== null && amountOk && nairaToKobo(total) > walletKobo ? (
+                <p className="mt-2 text-sm text-yellow-300/90">
+                  Fund your wallet before the first date.{' '}
+                  <button type="button" onClick={() => nav('/wallet')} className="font-semibold text-zener-gold hover:underline">Fund wallet</button>
+                </p>
+              ) : null}
+            </Field>
+          ) : (
+            <Field label="Pay with">
+              <div className="grid gap-2 sm:grid-cols-2">
+                <MethodOption
+                  active={method === 'checkout'}
+                  onClick={() => setMethod('checkout')}
+                  title={checkoutKind === 'transfer' ? 'Bank transfer' : 'Card, transfer or USSD'}
+                  sub={`${checkoutKind === 'transfer' ? 'Pay from any bank app' : 'Secure checkout'}${feeNote('checkout')}`}
+                />
+                <MethodOption
+                  active={method === 'wallet'}
+                  onClick={() => setMethod('wallet')}
+                  title="Wallet"
+                  sub={`${walletKobo === null ? 'Balance —' : `Balance ${naira(walletKobo)}`}${feeNote('wallet')}`}
+                />
+              </div>
+              {walletShort ? (
+                <p className="mt-2 text-sm text-yellow-300/90">
+                  Your wallet balance is too low.{' '}
+                  <button type="button" onClick={() => nav('/wallet')} className="font-semibold text-zener-gold hover:underline">Fund wallet</button>
+                </p>
+              ) : null}
+            </Field>
+          )}
 
           {channels.includes('email') ? (
             <p className="flex items-center gap-2 text-xs text-white/45">
@@ -734,7 +838,7 @@ function BuyPage({
             </p>
           ) : null}
 
-          {extraChannels.length ? (
+          {extraChannels.length && !repeating ? (
             <Field label="Also send my token by">
               <div className="flex flex-wrap gap-2">
                 {extraChannels.map((c) => (
@@ -766,15 +870,32 @@ function BuyPage({
           ) : null}
 
           {error ? <p className="rounded-lg bg-zener-danger/10 px-3.5 py-2.5 text-sm text-zener-danger">{error}</p> : null}
+          {scheduled ? (
+            <p className="flex items-center gap-2 rounded-lg bg-zener-success/10 px-3.5 py-2.5 text-sm text-zener-success">
+              <Check size={15} className="shrink-0" /> {scheduled}
+            </p>
+          ) : null}
 
           <button
             type="button"
-            disabled={paying || !ready}
+            disabled={paying || !ready || !!scheduled}
             onClick={() => void pay()}
             className="flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-zener-gold text-[15px] font-bold text-black transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {paying && <Loader2 size={18} className="animate-spin" />}
-            {paying ? (method === 'wallet' ? 'Buying…' : 'Starting secure payment…') : value > 0 ? `Pay ${formatCurrency(total)}` : 'Pay'}
+            {repeating
+              ? paying
+                ? 'Setting up…'
+                : value > 0
+                  ? `Auto-buy ${formatCurrency(total)} ${repeatWhen}`
+                  : 'Start auto-buy'
+              : paying
+                ? method === 'wallet'
+                  ? 'Buying…'
+                  : 'Starting secure payment…'
+                : value > 0
+                  ? `Pay ${formatCurrency(total)}`
+                  : 'Pay'}
           </button>
           <p className="flex items-center justify-center gap-1.5 text-center text-xs text-white/35">
             <Lock size={12} /> Processed securely. Receipt to {user.email}
@@ -792,14 +913,20 @@ function BuyPage({
                 <SummaryRow label="Electricity" value={value > 0 ? formatCurrency(value) : undefined} />
                 {kwh > 0 ? <SummaryRow label="Estimated energy" value={`≈ ${formatKwh(kwh)}`} /> : null}
                 {fee > 0 ? <p className="mt-1 text-right text-xs text-white/35">includes {formatCurrency(fee)} service charge</p> : null}
-                {methodFee > 0 ? <SummaryRow label={method === 'wallet' ? 'Wallet fee' : 'Convenience fee'} value={formatCurrency(methodFee)} /> : null}
+                {methodFee > 0 ? <SummaryRow label={repeating || method === 'wallet' ? 'Wallet fee' : 'Convenience fee'} value={formatCurrency(methodFee)} /> : null}
               </div>
+              {repeating ? (
+                <div className="border-t border-white/[0.08] pt-3">
+                  <SummaryRow label="Repeats" value={repeatLabel} />
+                </div>
+              ) : null}
               <div className="border-t border-white/[0.08] pt-3">
-                <SummaryRow label="Total" value={value > 0 ? formatCurrency(total) : undefined} strong />
+                <SummaryRow label={repeating ? 'Each time' : 'Total'} value={value > 0 ? formatCurrency(total) : undefined} strong />
               </div>
             </dl>
           </div>
           <UnitsCard orders={recent} />
+          <AutoBuyCard schedules={schedules} onChange={loadSchedules} />
           {recent.length ? (
             <div className={`${card} p-6`}>
               <div className="mb-2 flex items-baseline justify-between">
@@ -827,6 +954,91 @@ function BuyPage({
         </div>
       </div>
     </>
+  );
+}
+
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+function ordinal(n: number): string {
+  const s = n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th';
+  return `${n}${s}`;
+}
+
+// "Every Wednesday" / "Monthly on the 1st"; repeatPhrase is the same inside a sentence.
+function repeatText(freq: 'weekly' | 'monthly', day: number): string {
+  return freq === 'weekly' ? `Every ${WEEKDAYS[day]}` : `Monthly on the ${ordinal(day)}`;
+}
+
+function repeatPhrase(freq: 'weekly' | 'monthly', day: number): string {
+  return freq === 'weekly' ? `every ${WEEKDAYS[day]}` : `on the ${ordinal(day)} of every month`;
+}
+
+const formatRunDate = (iso: string) =>
+  new Date(iso).toLocaleString('en-NG', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'Africa/Lagos' });
+
+// AutoBuyCard lists the customer's auto-buys, with pause / resume / remove.
+function AutoBuyCard({ schedules, onChange }: { schedules: Schedule[]; onChange: () => void }) {
+  const [busy, setBusy] = useState('');
+  if (!schedules.length) return null;
+  const act = async (id: string, fn: () => Promise<unknown>) => {
+    setBusy(id);
+    try {
+      await fn();
+    } catch {
+      /* the list reloads either way */
+    } finally {
+      setBusy('');
+      onChange();
+    }
+  };
+  return (
+    <div className={`${card} p-6`}>
+      <p className="mb-2 text-xs font-semibold text-white/40">Auto-buy</p>
+      <ul className="divide-y divide-white/[0.06]">
+        {schedules.map((sc) => (
+          <li key={sc.id} className="py-2.5 text-sm">
+            <div className="flex items-start justify-between gap-3">
+              <span className="min-w-0">
+                <span className="block truncate text-white/80">{sc.meter_number}</span>
+                <span className="block truncate text-xs text-white/35">
+                  {sc.provider_name} · {repeatText(sc.frequency, sc.day)}
+                </span>
+              </span>
+              <span className="shrink-0 text-right font-semibold">{naira(sc.amount_kobo)}</span>
+            </div>
+            <div className="mt-1.5 flex items-center justify-between gap-3 text-xs">
+              <span className={sc.active && sc.last_status === 'waiting_funds' ? 'text-yellow-300/90' : sc.active ? 'text-zener-gold' : 'text-white/35'}>
+                {!sc.active
+                  ? 'Paused'
+                  : sc.last_status === 'waiting_funds'
+                    ? 'Waiting for wallet funds'
+                    : `Next: ${formatRunDate(sc.next_run_at)}`}
+              </span>
+              <span className="flex shrink-0 gap-3">
+                <button
+                  type="button"
+                  disabled={busy === sc.id}
+                  onClick={() => void act(sc.id, () => account.setScheduleActive(sc.id, !sc.active))}
+                  className="font-semibold text-white/50 hover:text-white disabled:opacity-40"
+                >
+                  {sc.active ? 'Pause' : 'Resume'}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy === sc.id}
+                  onClick={() => {
+                    if (window.confirm(`Stop auto-buy for meter ${sc.meter_number}?`)) void act(sc.id, () => account.removeSchedule(sc.id));
+                  }}
+                  className="font-semibold text-white/50 hover:text-zener-danger disabled:opacity-40"
+                >
+                  Remove
+                </button>
+              </span>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

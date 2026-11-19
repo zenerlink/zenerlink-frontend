@@ -308,6 +308,24 @@ export const guest = {
 export const koboToNaira = (k: number) => k / 100;
 export const nairaToKobo = (n: number) => Math.round(n * 100);
 
+// An auto-buy: electricity bought from the wallet every week or month, at 8:00 am Lagos time.
+export type Schedule = {
+  id: string;
+  provider_code: string;
+  provider_name: string;
+  meter_number: string;
+  meter_type: 'prepaid' | 'postpaid';
+  customer_name: string;
+  amount_kobo: number;
+  frequency: 'weekly' | 'monthly';
+  day: number; // weekly: 0 = Sunday … 6; monthly: 1 … 28
+  active: boolean;
+  next_run_at: string;
+  last_run_at: string | null;
+  last_status: '' | 'bought' | 'waiting_funds' | 'skipped';
+  last_error: string;
+};
+
 // ---- Account orders (buy page for signed-in customers) ----
 export const account = {
   order: (
@@ -322,4 +340,11 @@ export const account = {
   changePassword: (current_password: string, new_password: string) =>
     request<void>('POST', '/v1/me/password', { current_password, new_password }),
   removeMeter: (id: string) => request<void>('DELETE', `/v1/meters/${encodeURIComponent(id)}`),
+  schedules: () => request<{ schedules: Schedule[] }>('GET', '/v1/schedules'),
+  createSchedule: (
+    input: { provider_code: string; meter_number: string; meter_type: string; amount_kobo: number; frequency: 'weekly' | 'monthly'; day: number },
+    idempotencyKey: string,
+  ) => request<Schedule>('POST', '/v1/schedules', input, { 'Idempotency-Key': idempotencyKey }),
+  setScheduleActive: (id: string, active: boolean) => request<Schedule>('PATCH', `/v1/schedules/${encodeURIComponent(id)}`, { active }),
+  removeSchedule: (id: string) => request<void>('DELETE', `/v1/schedules/${encodeURIComponent(id)}`),
 };
