@@ -192,10 +192,9 @@ export default function VendRoot() {
       <MetersPage />
     ) : p.startsWith('/wallet') ? (
       <WalletPage funded={url.searchParams.has('funded')} />
-    ) : p.startsWith('/profile') ? (
+    ) : p.startsWith('/profile') || p.startsWith('/password') ? (
       <ProfilePage />
-    ) : p.startsWith('/password') ? (
-      <PasswordPage />
+
     ) : p.startsWith('/help') ? (
       <HelpPage />
     ) : p.startsWith('/staff') && isStaff(user.role) ? (
@@ -293,7 +292,6 @@ const NAV: [string, string, (p: { size?: number }) => React.ReactNode][] = [
   ['/wallet', 'Wallet', Wallet],
   ['/units', 'Saved units', BatteryCharging],
   ['/profile', 'Profile', UserRound],
-  ['/password', 'Change password', KeyRound],
   ['/help', 'Help', LifeBuoy],
 ];
 
@@ -388,7 +386,6 @@ function Shell({ children }: { children: React.ReactNode }) {
                   <a {...link('/airtime')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Airtime & data</a>
                   <a {...link('/tv')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Cable TV</a>
                   <a {...link('/transactions')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Transactions</a>
-                  <a {...link('/password')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Change password</a>
                   {isStaff(user.role) ? (
                     <a {...link('/staff')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Staff</a>
                   ) : null}
@@ -2922,7 +2919,11 @@ function FundByCheckout({ inputRef, funded, onFunded }: { inputRef: React.RefObj
 // ---------------------------------------------------------------------------
 
 function ProfilePage() {
-  const { user, setUser } = useAcct();
+  const { user, setUser, path } = useAcct();
+  // Old "Change password" links land on the profile, at the password form.
+  useEffect(() => {
+    if (path.startsWith('/password')) window.setTimeout(() => document.getElementById('password')?.scrollIntoView({ behavior: 'smooth' }), 60);
+  }, [path]);
   const [name, setName] = useState(user.name);
   const [phone, setPhone] = useState(user.phone);
   const [saving, setSaving] = useState(false);
@@ -2976,6 +2977,7 @@ function ProfilePage() {
         </div>
       </form>
       <LinkedMeters />
+      <PasswordForm />
       </div>
     </>
   );
@@ -3021,7 +3023,7 @@ function LinkedMeters() {
   );
 }
 
-function PasswordPage() {
+function PasswordForm() {
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -3050,9 +3052,11 @@ function PasswordPage() {
   };
 
   return (
-    <>
-      <PageTitle title="Change password" />
-      <form onSubmit={(e) => void submit(e)} className={`${card} max-w-xl space-y-5 p-6`}>
+    <form id="password" onSubmit={(e) => void submit(e)} className={`${card} scroll-mt-24 space-y-5 p-6`}>
+        <div className="flex items-center gap-2.5">
+          <KeyRound size={18} className="text-zener-gold" />
+          <h2 className="text-base font-bold">Change password</h2>
+        </div>
         <Field label="Current password">
           <input value={current} onChange={(e) => setCurrent(e.target.value)} type="password" autoComplete="current-password" className={inputCls} />
         </Field>
@@ -3074,7 +3078,6 @@ function PasswordPage() {
           {done ? <span className="text-sm text-zener-success">Password changed.</span> : null}
         </div>
       </form>
-    </>
   );
 }
 
