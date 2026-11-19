@@ -341,6 +341,7 @@ export const requests = {
   pay: (code: string, input: { payment_method: 'checkout' | 'wallet' }, idempotencyKey: string) =>
     request<GuestOrder>('POST', `/v1/requests/${encodeURIComponent(code)}/pay`, input, { 'Idempotency-Key': idempotencyKey }),
   cancel: (code: string) => request<PaymentRequest>('POST', `/v1/requests/${encodeURIComponent(code)}/cancel`),
+  email: (code: string, email: string) => request<{ sent_to: string }>('POST', `/v1/requests/${encodeURIComponent(code)}/email`, { email }),
 };
 
 // ---- Airtime, data and cable TV (paid from the wallet) ----

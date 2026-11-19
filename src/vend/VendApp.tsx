@@ -1158,6 +1158,22 @@ function RequestQrDialog({ request, onClose }: { request: PaymentRequest; onClos
   const link = requestLink(request.code);
   const [qr, setQr] = useState('');
   const [copied, setCopied] = useState(false);
+  const [to, setTo] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState<{ ok: boolean; text: string } | null>(null);
+  const sendEmail = async () => {
+    setSending(true);
+    setSent(null);
+    try {
+      const r = await requests.email(request.code, to);
+      setSent({ ok: true, text: `Sent to ${r.sent_to}` });
+      setTo('');
+    } catch (e) {
+      setSent({ ok: false, text: message(e) });
+    } finally {
+      setSending(false);
+    }
+  };
   const text = `Please pay ${naira(request.amount_kobo)} for my electricity (${request.provider_name}, meter ${request.meter_number}).`;
 
   useEffect(() => {
@@ -1213,6 +1229,36 @@ function RequestQrDialog({ request, onClose }: { request: PaymentRequest; onClos
             {copied ? <Check size={16} className="text-zener-success" /> : <Copy size={16} />} {copied ? 'Copied' : 'Copy link'}
           </button>
         </div>
+        {request.status === 'open' ? (
+          <form
+            className="mt-4 border-t border-white/[0.08] pt-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (to.trim()) void sendEmail();
+            }}
+          >
+            <label className="mb-2 block text-sm font-medium text-white/70">Or send it by email</label>
+            <div className="flex gap-2">
+              <input
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+                placeholder="their@email.com"
+                className={`${inputCls} min-w-0 flex-1`}
+              />
+              <button
+                type="submit"
+                disabled={sending || !to.trim()}
+                className="flex shrink-0 items-center gap-2 rounded-xl bg-white/[0.07] px-4 text-sm font-bold hover:bg-white/[0.12] disabled:opacity-40"
+              >
+                {sending ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} />} Send
+              </button>
+            </div>
+            {sent ? <p className={`mt-2 text-sm ${sent.ok ? 'text-zener-success' : 'text-zener-danger'}`}>{sent.text}</p> : null}
+          </form>
+        ) : null}
       </div>
     </div>
   );
