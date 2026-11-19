@@ -132,7 +132,7 @@ export type Purchase = {
 
 export type PendingToken = { id: string; token: string; meter_id: string; energy_kwh: number; source: 'purchase' | 'share'; note: string; sandbox: boolean };
 export type Recipient = { name: string; meter_number: string; last_note: string; last_kwh: number; last_shared_at: string | null };
-export type Notification = { id: string; title: string; message: string; critical: boolean; created_at: string };
+export type Notification = { id: string; title: string; message: string; critical: boolean; kind?: string; read_at?: string | null; created_at: string };
 export type Activity = { kind: string; title: string; subtitle: string; amount_kobo?: number; kwh?: number; created_at: string };
 export type Tariff = { provider_code: string; provider_name: string; rate_kobo_per_kwh: number; rate_per_kwh: number };
 export type Consumption = { data_source: 'device' | 'none'; days: { date: string; kwh: number }[]; time_breakdown: Record<string, number>; message?: string };
@@ -259,7 +259,8 @@ export const api = {
     request<{ token?: string; kwh: number; simulated: boolean }>('POST', '/v1/shares', input, idem()),
   recipients: () => request<{ recipients: Recipient[] }>('GET', '/v1/recipients'),
   removeRecipient: (meterNumber: string) => request<void>('DELETE', `/v1/recipients/${encodeURIComponent(meterNumber)}`),
-  notifications: () => request<{ notifications: Notification[] }>('GET', '/v1/notifications'),
+  notifications: () => request<{ notifications: Notification[]; unread: number }>('GET', '/v1/notifications'),
+  readAllNotifications: () => request<void>('POST', '/v1/notifications/read-all'),
   activity: () => request<{ activity: Activity[] }>('GET', '/v1/activity'),
 };
 

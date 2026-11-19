@@ -3,6 +3,7 @@ import {
   ArrowDownLeft,
   ArrowDownToLine,
   ArrowUpRight,
+  Bell,
   Check,
   ChevronDown,
   Copy,
@@ -37,7 +38,7 @@ import { discoLogo } from '../assets/discos';
 import { BILL_LOGOS } from '../assets/bills';
 import logo from '../assets/logo-icon-white.svg';
 import { ApiError, IS_PRODUCTION, account, api, bills, guest, koboToNaira, nairaToKobo, requests, setSignedOutHandler } from '../lib/api';
-import type { ApiMeter, BankTransfer, Bill, BillProduct, BillService, Branding, DeliveryChannel, Disco, GuestOrder, PaymentRequest, PublicMeter, Schedule, User, WalletActivity, WalletEntry } from '../lib/api';
+import type { ApiMeter, BankTransfer, Bill, Notification, BillProduct, BillService, Branding, DeliveryChannel, Disco, GuestOrder, PaymentRequest, PublicMeter, Schedule, User, WalletActivity, WalletEntry } from '../lib/api';
 import { BrandContext, fallbackBranding, useBrand } from '../lib/brand';
 import { applyBranding } from '../lib/theme';
 import { formatCurrency } from '../lib/format';
@@ -338,19 +339,20 @@ function Shell({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-[rgb(var(--zener-background))]/90 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
           <a {...link('/')} className="flex items-center gap-3">
-            <span className="text-[15px] font-black tracking-[0.3em]">{brand.display_name.toUpperCase()}</span>
+            <span className="text-[13px] font-black tracking-[0.2em] sm:text-[15px] sm:tracking-[0.3em]">{brand.display_name.toUpperCase()}</span>
           </a>
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3">
             <a
               {...link('/wallet')}
-              className="flex items-center gap-2 rounded-full border border-white/[0.09] py-1.5 pl-3 pr-1.5 text-[13px] font-semibold hover:border-white/25"
+              className="flex items-center gap-1.5 rounded-full border border-white/[0.09] py-1.5 pl-2.5 pr-1.5 text-[13px] font-semibold hover:border-white/25 sm:gap-2 sm:pl-3"
             >
-              <Wallet size={15} className="text-zener-gold" />
+              <Wallet size={15} className="hidden text-zener-gold min-[380px]:block" />
               {walletKobo === null ? '—' : naira(walletKobo)}
               <span className="grid h-6 w-6 place-items-center rounded-full bg-zener-gold text-black" aria-label="Fund wallet">
                 <Plus size={14} strokeWidth={3} />
               </span>
             </a>
+            <NotificationBell />
             <div ref={menuRef} className="relative">
               <button
                 type="button"
@@ -449,6 +451,121 @@ function Shell({ children }: { children: React.ReactNode }) {
           );
         })}
       </nav>
+    </div>
+  );
+}
+
+const timeAgo = (iso: string) => {
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return 'Just now';
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  if (s < 7 * 86400) return `${Math.floor(s / 86400)} d ago`;
+  return shortDate(iso);
+};
+
+// NotificationBell shows the unread count; opening it lists the latest and marks them read.
+function NotificationBell() {
+  const [items, setItems] = useState<Notification[]>([]);
+  const [unread, setUnread] = useState(0);
+  const [open, setOpen] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const load = useCallback(() => {
+    api
+      .notifications()
+      .then((r) => {
+        setItems(r.notifications);
+        setUnread(r.unread ?? 0);
+        setLoaded(true);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    load();
+    const t = window.setInterval(load, 60000);
+    const onFocus = () => load();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.clearInterval(t);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [load]);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [open]);
+
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next && unread > 0) {
+      setUnread(0);
+      api.readAllNotifications().catch(() => undefined);
+    }
+    if (!next) load(); // the dots clear once the list has been seen
+  };
+
+  return (
+    <div ref={ref} className="sm:relative">
+      <button
+        type="button"
+        onClick={toggle}
+        aria-label={unread ? `Notifications, ${unread} unread` : 'Notifications'}
+        aria-expanded={open}
+        className="relative grid h-9 w-9 place-items-center rounded-full border border-white/[0.09] text-white/70 transition hover:border-white/25 hover:text-white"
+      >
+        <Bell size={16} />
+        {unread > 0 ? (
+          <span className="absolute -right-1 -top-1 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-zener-gold px-1 text-[10px] font-bold text-black">
+            {unread > 9 ? '9+' : unread}
+          </span>
+        ) : null}
+      </button>
+      {open ? (
+        <div className="fixed inset-x-3 top-[4.25rem] z-40 overflow-hidden rounded-2xl border border-white/[0.1] bg-[rgb(var(--zener-surface))] shadow-2xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-96">
+          <div className="flex items-center justify-between border-b border-white/[0.07] px-4 py-3">
+            <p className="text-sm font-semibold">Notifications</p>
+            <button type="button" onClick={() => setOpen(false)} aria-label="Close" className="rounded-lg p-1 text-white/45 hover:bg-white/[0.06] hover:text-white">
+              <X size={16} />
+            </button>
+          </div>
+          <ul className="max-h-[min(70vh,480px)] divide-y divide-white/[0.06] overflow-y-auto overscroll-contain">
+            {!loaded ? (
+              <li className="grid place-items-center py-10">
+                <Loader2 size={18} className="animate-spin text-white/40" />
+              </li>
+            ) : items.length === 0 ? (
+              <li className="px-4 py-10 text-center text-sm text-white/40">No notifications yet. Purchases, top-ups and requests show up here.</li>
+            ) : (
+              items.map((n) => (
+                <li key={n.id} className="flex gap-3 px-4 py-3">
+                  <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${!n.read_at ? (n.critical ? 'bg-zener-danger' : 'bg-zener-gold') : 'bg-transparent'}`} />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-baseline justify-between gap-3">
+                      <span className={`truncate text-sm font-semibold ${n.read_at ? 'text-white/70' : 'text-white'}`}>{n.title}</span>
+                      <span className="shrink-0 text-[11px] text-white/35">{timeAgo(n.created_at)}</span>
+                    </span>
+                    <span className="mt-0.5 block break-words text-[13px] leading-snug text-white/50">{n.message}</span>
+                  </span>
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }
