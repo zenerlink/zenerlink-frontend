@@ -37,6 +37,7 @@ import type { ScanResult } from './scan';
 import { discoLogo } from '../assets/discos';
 import { BILL_LOGOS } from '../assets/bills';
 import logo from '../assets/logo-icon-white.svg';
+import payrepMark from '../assets/payrep-mark.png';
 import { ApiError, IS_PRODUCTION, account, api, bills, guest, koboToNaira, nairaToKobo, requests, setSignedOutHandler } from '../lib/api';
 import type { ApiMeter, BankTransfer, Bill, Notification, BillProduct, BillService, Branding, DeliveryChannel, Disco, GuestOrder, PaymentRequest, PublicMeter, Schedule, User, WalletActivity, WalletEntry } from '../lib/api';
 import { BrandContext, fallbackBranding, useBrand } from '../lib/brand';
@@ -3231,10 +3232,36 @@ function OrderView({
 // TransferDetails is an account to pay into: the one-time account for an
 // order (with its countdown) or the customer's own wallet account.
 function TransferDetails({ transfer, note, waiting = true }: { transfer: BankTransfer; note?: string; waiting?: boolean }) {
+  const brand = useBrand();
   const left = useCountdown(transfer.expires_at);
+  const isPayRep = /payrep/i.test(transfer.bank_name);
+  // The bank shows the account under our company name until PayRep enables exact naming.
+  const legalName = /zieon/i.test(transfer.account_name) && !/zieon/i.test(brand.display_name);
   return (
     <div className={`${card} space-y-3 p-6 text-sm`}>
-      <SummaryRow label="Bank" value={transfer.bank_name} />
+      <div className="flex items-center justify-between gap-3 border-b border-white/[0.08] pb-3">
+        <span className="flex min-w-0 items-center gap-2.5">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-black ring-1 ring-white/10">
+            <img src={brand.logo_url || logo} alt="" className="h-5 w-5 object-contain" />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-[11px] text-white/40">Pay to</span>
+            <span className="block truncate font-bold">{brand.display_name}</span>
+          </span>
+        </span>
+        {isPayRep ? (
+          <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-white/45">
+            via <img src={payrepMark} alt="" className="h-5 w-5 rounded" /> <span className="font-semibold text-white/70">PayRep MFB</span>
+          </span>
+        ) : null}
+      </div>
+      <div className="flex items-center justify-between gap-4">
+        <span className="text-white/45">Bank</span>
+        <span className="flex min-w-0 items-center gap-2 font-medium text-white/85">
+          {isPayRep ? <img src={payrepMark} alt="" className="h-5 w-5 shrink-0 rounded" /> : null}
+          <span className="truncate">{transfer.bank_name}</span>
+        </span>
+      </div>
       <div className="flex items-center justify-between gap-4">
         <span className="text-white/45">Account no.</span>
         <span className="flex items-center gap-2">
@@ -3243,6 +3270,9 @@ function TransferDetails({ transfer, note, waiting = true }: { transfer: BankTra
         </span>
       </div>
       <SummaryRow label="Name" value={transfer.account_name} />
+      {legalName ? (
+        <p className="-mt-1 text-right text-[11px] text-white/35">Your bank app shows this name: Zieon Energies Ltd is the company behind {brand.display_name}.</p>
+      ) : null}
       {left !== null || note ? (
         <div className="space-y-1 border-t border-white/[0.08] pt-3 text-white/60">
           {left !== null ? <p className="font-semibold text-white">{left > 0 ? `Expires in ${mmss(left)}` : 'This account has expired'}</p> : null}
