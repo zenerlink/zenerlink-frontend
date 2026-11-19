@@ -507,7 +507,7 @@ function BuyPage({
       })
       .catch(() => undefined);
     account
-      .orders(4)
+      .orders(100)
       .then((r) => setRecent(r.orders))
       .catch(() => undefined);
   }, [meterId]);
@@ -799,6 +799,7 @@ function BuyPage({
               </div>
             </dl>
           </div>
+          <UnitsCard orders={recent} />
           {recent.length ? (
             <div className={`${card} p-6`}>
               <div className="mb-2 flex items-baseline justify-between">
@@ -806,14 +807,17 @@ function BuyPage({
                 <button type="button" onClick={() => nav('/transactions')} className="text-xs font-semibold text-white/50 hover:text-white">View all</button>
               </div>
               <ul className="divide-y divide-white/[0.06]">
-                {recent.map((o) => (
+                {recent.slice(0, 4).map((o) => (
                   <li key={o.id}>
                     <button type="button" onClick={() => nav(`/order/${o.id}`)} className="flex w-full items-center justify-between gap-3 py-2.5 text-left text-sm">
                       <span className="min-w-0">
                         <span className="block truncate text-white/80">{o.meter_number}</span>
                         <span className="block truncate text-xs text-white/35">{o.provider_name}</span>
                       </span>
-                      <span className="shrink-0 font-semibold">{naira(o.amount_kobo)}</span>
+                      <span className="shrink-0 text-right">
+                        <span className="block font-semibold">{naira(o.amount_kobo)}</span>
+                        {bought(o) && o.energy_kwh ? <span className="block text-xs text-zener-gold">{formatKwh(o.energy_kwh)}</span> : null}
+                      </span>
                     </button>
                   </li>
                 ))}
@@ -823,6 +827,36 @@ function BuyPage({
         </div>
       </div>
     </>
+  );
+}
+
+// A completed purchase of real electricity (test-mode orders are left out).
+const bought = (o: GuestOrder) => (o.status === 'vended' || o.status === 'delivered') && !o.sandbox;
+
+// UnitsCard totals the electricity bought this month (Lagos calendar month).
+function UnitsCard({ orders }: { orders: GuestOrder[] }) {
+  const month = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' }).slice(0, 7);
+  const done = orders.filter(bought);
+  const thisMonth = done.filter((o) => new Date(o.created_at).toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' }).startsWith(month));
+  const kwh = thisMonth.reduce((t, o) => t + (o.energy_kwh || 0), 0);
+  const spent = thisMonth.reduce((t, o) => t + o.amount_kobo, 0);
+  const last = done[0];
+  if (!done.length) return null;
+  return (
+    <div className={`${card} p-6`}>
+      <p className="text-xs font-semibold text-white/40">Units bought this month</p>
+      <p className="mt-2 text-3xl font-black tracking-tight text-zener-gold">{formatKwh(kwh)}</p>
+      <p className="mt-1 text-xs text-white/45">
+        {thisMonth.length} {thisMonth.length === 1 ? 'purchase' : 'purchases'} · {naira(spent)}
+      </p>
+      {last ? (
+        <dl className="mt-4 space-y-2 border-t border-white/[0.08] pt-3 text-sm">
+          <SummaryRow label="Last purchase" value={last.energy_kwh ? formatKwh(last.energy_kwh) : '—'} />
+          <SummaryRow label="Meter" value={last.meter_number} />
+          <SummaryRow label="Date" value={shortDate(last.created_at)} />
+        </dl>
+      ) : null}
+    </div>
   );
 }
 
