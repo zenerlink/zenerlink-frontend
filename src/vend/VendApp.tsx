@@ -3265,8 +3265,6 @@ function TransferDetails({ transfer, note, waiting = true }: { transfer: BankTra
   const brand = useBrand();
   const left = useCountdown(transfer.expires_at);
   const isPayRep = /payrep/i.test(transfer.bank_name);
-  // The bank shows the account under our company name until PayRep enables exact naming.
-  const legalName = /zieon/i.test(transfer.account_name) && !/zieon/i.test(brand.display_name);
   return (
     <div className={`${card} space-y-3 p-6 text-sm`}>
       <div className="flex items-center justify-between gap-3 border-b border-white/[0.08] pb-3">
@@ -3300,9 +3298,6 @@ function TransferDetails({ transfer, note, waiting = true }: { transfer: BankTra
         </span>
       </div>
       <SummaryRow label="Name" value={transfer.account_name} />
-      {legalName ? (
-        <p className="-mt-1 text-right text-[11px] text-white/35">Your bank app shows this name: Zieon Energies Ltd is the company behind {brand.display_name}.</p>
-      ) : null}
       {left !== null || note ? (
         <div className="space-y-1 border-t border-white/[0.08] pt-3 text-white/60">
           {left !== null ? <p className="font-semibold text-white">{left > 0 ? `Expires in ${mmss(left)}` : 'This account has expired'}</p> : null}
