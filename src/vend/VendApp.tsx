@@ -3106,6 +3106,21 @@ function OrderView({
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const [resent, setResent] = useState('');
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState('');
+  const cancelOrder = async () => {
+    if (!order) return;
+    if (!window.confirm("Cancel this order?\n\nOnly do this if you haven't sent the money. If you already sent it, it will be added to your wallet.")) return;
+    setCancelling(true);
+    setCancelError('');
+    try {
+      setOrder(await account.cancel(order.id));
+    } catch (e) {
+      setCancelError(message(e));
+    } finally {
+      setCancelling(false);
+    }
+  };
   const loadRef = useRef(load);
   const finalRef = useRef(onFinal);
   const loadedRef = useRef(onLoad);
@@ -3174,7 +3189,22 @@ function OrderView({
       ) : done ? (
         <p className="rounded-2xl border border-zener-success/30 bg-zener-success/[0.06] p-6 text-sm">Your postpaid bill payment was received.</p>
       ) : transfer ? (
-        <TransferDetails transfer={transfer} note={order.message} />
+        <>
+          <TransferDetails transfer={transfer} note={order.message} />
+          {canShare ? (
+            <div className="space-y-2">
+              <button
+                type="button"
+                disabled={cancelling}
+                onClick={() => void cancelOrder()}
+                className="flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-white/[0.1] text-sm font-semibold text-white/70 transition hover:border-zener-danger/50 hover:text-zener-danger disabled:opacity-50"
+              >
+                {cancelling ? <Loader2 size={16} className="animate-spin" /> : <X size={16} />} Cancel order
+              </button>
+              {cancelError ? <p className="text-center text-sm text-zener-danger">{cancelError}</p> : null}
+            </div>
+          ) : null}
+        </>
       ) : pending ? (
         <div className="flex items-center gap-3 rounded-2xl border border-white/[0.07] p-6 text-sm text-white/60">
           <Loader2 size={18} className="animate-spin text-zener-gold" /> {order.message || 'Processing…'}

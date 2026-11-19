@@ -410,6 +410,7 @@ export const account = {
   ) => request<GuestOrder>('POST', '/v1/orders', input, { 'Idempotency-Key': idempotencyKey }),
   share: (id: string) => request<{ code: string; expires_at: string }>('POST', `/v1/orders/${encodeURIComponent(id)}/share`),
   resend: (id: string) => request<{ sent_to: string }>('POST', `/v1/orders/${encodeURIComponent(id)}/resend`),
+  cancel: (id: string) => request<GuestOrder>('POST', `/v1/orders/${encodeURIComponent(id)}/cancel`),
   statement: (from: string, to: string) => request<Statement>('GET', `/v1/statement?from=${from}&to=${to}`),
   orders: (limit = 20) => request<{ orders: GuestOrder[] }>('GET', `/v1/orders?limit=${limit}`),
   get: (id: string) => request<GuestOrder>('GET', `/v1/orders/${encodeURIComponent(id)}`),
