@@ -6,6 +6,8 @@ import {
   Bell,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   Eye,
   EyeOff,
@@ -47,7 +49,7 @@ import { BILL_LOGOS } from '../assets/bills';
 import logo from '../assets/logo-icon-white.svg';
 import payrepMark from '../assets/payrep-mark.png';
 import { ApiError, IS_PRODUCTION, account, api, bills, guest, koboToNaira, nairaToKobo, requests, setSignedOutHandler } from '../lib/api';
-import type { ApiMeter, BankTransfer, Bill, Notification, BillProduct, BillService, Branding, DeliveryChannel, Disco, GuestOrder, PaymentRequest, PublicMeter, Schedule, User, WalletActivity, WalletEntry } from '../lib/api';
+import type { ApiMeter, BankTransfer, Bill, Notification, BillProduct, BillService, Branding, DeliveryChannel, Disco, GuestOrder, OrderGroup, PaymentRequest, PublicMeter, Schedule, User, WalletActivity, WalletEntry } from '../lib/api';
 import { BrandContext, fallbackBranding, useBrand } from '../lib/brand';
 import { applyBranding } from '../lib/theme';
 import { formatCurrency } from '../lib/format';
@@ -2133,9 +2135,53 @@ function useOrders(limit: number) {
   return { orders, error };
 }
 
+const PAGE_SIZE = 20;
+const ORDER_FILTERS: [OrderGroup | '', string][] = [
+  ['', 'All'],
+  ['successful', 'Successful'],
+  ['processing', 'Processing'],
+  ['delayed', 'Delayed'],
+  ['refunded', 'Refunded'],
+  ['not_paid', 'Not paid'],
+];
+
 function TransactionsPage() {
   const { nav } = useAcct();
-  const { orders, error } = useOrders(100);
+  // Filter and page live in the URL, so back from an order returns here.
+  const params = new URLSearchParams(window.location.search);
+  const initial = params.get('status') as OrderGroup | null;
+  const [status, setStatus] = useState<OrderGroup | ''>(initial && ORDER_FILTERS.some(([k]) => k === initial) ? initial : '');
+  const [page, setPage] = useState(() => Math.max(1, Number(params.get('page')) || 1));
+  const [data, setData] = useState<{ orders: GuestOrder[]; total: number; counts: Record<string, number> } | null>(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let live = true;
+    setError('');
+    account
+      .ordersPage({ status: status || undefined, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE })
+      .then((r) => live && setData(r))
+      .catch((e) => live && setError(message(e)));
+    const q = new URLSearchParams();
+    if (status) q.set('status', status);
+    if (page > 1) q.set('page', String(page));
+    const qs = q.toString();
+    window.history.replaceState(window.history.state, '', `/transactions${qs ? `?${qs}` : ''}`);
+    return () => {
+      live = false;
+    };
+  }, [status, page]);
+  const orders = data?.orders ?? null;
+  const pages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
+  const pick = (s: OrderGroup | '') => {
+    setStatus(s);
+    setPage(1);
+    setData(null);
+  };
+  const go = (n: number) => {
+    setPage(n);
+    setData(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
   const [statement, setStatement] = useState(false);
   const [sharing, setSharing] = useState<GuestOrder | null>(null);
   const closeStatement = useCallback(() => setStatement(false), []);
@@ -2153,9 +2199,33 @@ function TransactionsPage() {
       />
       {statement ? <StatementDialog onClose={closeStatement} /> : null}
       {sharing ? <ShareTokenDialog order={sharing} onClose={closeShare} /> : null}
+      {data && data.counts.all > 0 ? (
+        <div className="-mx-4 mb-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+          <div className="flex min-w-max gap-2">
+            {ORDER_FILTERS.filter(([k]) => !k || k === status || (data.counts[k] ?? 0) > 0).map(([k, label]) => (
+              <button
+                key={k || 'all'}
+                type="button"
+                onClick={() => pick(k)}
+                className={`flex h-9 items-center gap-1.5 rounded-lg border px-3.5 text-xs font-semibold transition ${
+                  status === k ? 'border-zener-gold/60 bg-zener-gold/10 text-zener-gold' : 'border-white/[0.08] text-white/55 hover:border-white/20 hover:text-white'
+                }`}
+              >
+                {label}
+                <span className={status === k ? 'text-zener-gold/70' : 'text-white/30'}>{data.counts[k || 'all'] ?? 0}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
       {error ? <ErrorBox text={error} /> : orders === null ? <Spinner /> : orders.length === 0 ? (
-        <Empty text="No purchases yet." action="Buy electricity" onAction={() => nav('/')} />
+        status ? (
+          <Empty text="No purchases with this status." action="Show all" onAction={() => pick('')} />
+        ) : (
+          <Empty text="No purchases yet." action="Buy electricity" onAction={() => nav('/')} />
+        )
       ) : (
+        <>
         <div className={`${card} overflow-hidden`}>
           <table className="hidden w-full text-sm md:table">
             <thead className="border-b border-white/[0.07] text-left text-xs font-semibold text-white/40">
@@ -2211,6 +2281,35 @@ function TransactionsPage() {
             ))}
           </ul>
         </div>
+        {data && data.total > PAGE_SIZE ? (
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <p className="text-xs text-white/40">
+              {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, data.total)} of {data.total}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={page <= 1}
+                onClick={() => go(page - 1)}
+                className="flex h-9 items-center gap-1 rounded-lg border border-white/[0.1] px-3 text-xs font-bold text-white/75 hover:border-white/25 hover:text-white disabled:opacity-30"
+              >
+                <ChevronLeft size={15} /> Previous
+              </button>
+              <span className="px-1 text-xs text-white/45">
+                Page {page} of {pages}
+              </span>
+              <button
+                type="button"
+                disabled={page >= pages}
+                onClick={() => go(page + 1)}
+                className="flex h-9 items-center gap-1 rounded-lg border border-white/[0.1] px-3 text-xs font-bold text-white/75 hover:border-white/25 hover:text-white disabled:opacity-30"
+              >
+                Next <ChevronRight size={15} />
+              </button>
+            </div>
+          </div>
+        ) : null}
+        </>
       )}
     </>
   );

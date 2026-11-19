@@ -511,6 +511,9 @@ export const staff = {
   refundStuck: (id: string, note: string) => request<StuckResult>('POST', `/v1/admin/stuck/${encodeURIComponent(id)}/refund`, { note }),
 };
 
+// Status filters on the transactions page.
+export type OrderGroup = 'successful' | 'processing' | 'delayed' | 'refunded' | 'not_paid';
+
 // A paid electricity purchase the DisCo hasn't answered.
 export type StuckPurchase = {
   id: string;
@@ -600,6 +603,11 @@ export const account = {
   cancel: (id: string) => request<GuestOrder>('POST', `/v1/orders/${encodeURIComponent(id)}/cancel`),
   statement: (from: string, to: string) => request<Statement>('GET', `/v1/statement?from=${from}&to=${to}`),
   orders: (limit = 20) => request<{ orders: GuestOrder[] }>('GET', `/v1/orders?limit=${limit}`),
+  ordersPage: (q: { status?: OrderGroup; limit: number; offset: number }) =>
+    request<{ orders: GuestOrder[]; total: number; counts: Record<OrderGroup | 'all', number> }>(
+      'GET',
+      `/v1/orders?limit=${q.limit}&offset=${q.offset}${q.status ? `&status=${q.status}` : ''}`,
+    ),
   get: (id: string) => request<GuestOrder>('GET', `/v1/orders/${encodeURIComponent(id)}`),
   updateProfile: (input: { name?: string; phone?: string }) => request<User>('PATCH', '/v1/me', input),
   changePassword: (current_password: string, new_password: string) =>
