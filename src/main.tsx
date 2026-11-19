@@ -6,8 +6,9 @@ import VendRoot from './vend/VendApp';
 import './styles/index.css';
 
 // Links people open from payments, emails and QR codes always use the
-// buy-only view: order pages (Paystack return), password resets, token shares.
-const VEND_PATHS = ['/order/', '/reset-password', '/t/'];
+// buy-only view: order pages (Paystack return), password resets, token shares,
+// payment requests and meter QR stickers.
+const VEND_PATHS = ['/order/', '/reset-password', '/t/', '/pay/', '/buy'];
 const vend = APP_MODE === 'vend' || VEND_PATHS.some((p) => window.location.pathname.startsWith(p));
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
