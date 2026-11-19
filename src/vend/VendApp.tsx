@@ -14,23 +14,28 @@ import {
   Loader2,
   Lock,
   LogOut,
+  Mail,
   Plus,
   Printer,
   QrCode,
   Share2,
+  Smartphone,
   X,
   Receipt,
   RotateCcw,
+  ScanLine,
   Search,
   Trash2,
+  Tv,
   UserRound,
   Wallet,
 } from 'lucide-react';
 import { brandedQr, brandedQrUrl } from './qr';
+import { ScanDialog } from './scan';
 import { discoLogo } from '../assets/discos';
 import logo from '../assets/logo-icon-white.svg';
-import { ApiError, IS_PRODUCTION, account, api, guest, koboToNaira, nairaToKobo, setSignedOutHandler } from '../lib/api';
-import type { ApiMeter, BankTransfer, Branding, DeliveryChannel, Disco, GuestOrder, PublicMeter, Schedule, User, WalletActivity, WalletEntry } from '../lib/api';
+import { ApiError, IS_PRODUCTION, account, api, bills, guest, koboToNaira, nairaToKobo, setSignedOutHandler } from '../lib/api';
+import type { ApiMeter, BankTransfer, Bill, BillProduct, BillService, Branding, DeliveryChannel, Disco, GuestOrder, PublicMeter, Schedule, User, WalletActivity, WalletEntry } from '../lib/api';
 import { BrandContext, fallbackBranding, useBrand } from '../lib/brand';
 import { applyBranding } from '../lib/theme';
 import { formatCurrency } from '../lib/format';
@@ -178,6 +183,10 @@ export default function VendRoot() {
       <PasswordPage />
     ) : p.startsWith('/help') ? (
       <HelpPage />
+    ) : p.startsWith('/airtime') ? (
+      <BillsPage kind="phone" />
+    ) : p.startsWith('/tv') ? (
+      <BillsPage kind="cable" />
     ) : (
       <BuyPage
         meterId={url.searchParams.get('meter_id')}
@@ -255,6 +264,8 @@ const firstName = (u: User) => (u.name || '').trim().split(/\s+/)[0] || '';
 
 const NAV: [string, string, (p: { size?: number }) => React.ReactNode][] = [
   ['/', 'Buy electricity', ZMark],
+  ['/airtime', 'Airtime & data', Smartphone],
+  ['/tv', 'Cable TV', Tv],
   ['/transactions', 'Transactions', Receipt],
   ['/meters', 'My meters', Gauge],
   ['/wallet', 'Wallet', Wallet],
@@ -349,6 +360,7 @@ function Shell({ children }: { children: React.ReactNode }) {
                     <p className="truncate text-xs text-white/45">{user.email}</p>
                   </div>
                   <a {...link('/profile')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Profile</a>
+                  <a {...link('/meters')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">My meters</a>
                   <a {...link('/transactions')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Transactions</a>
                   <a {...link('/password')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Change password</a>
                   <a {...link('/help')} className="block px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Help</a>
@@ -421,10 +433,10 @@ function Shell({ children }: { children: React.ReactNode }) {
 
 const MOBILE_NAV: [string, string, (p: { size?: number }) => React.ReactNode][] = [
   ['/', 'Buy', ZMark],
+  ['/airtime', 'Airtime', Smartphone],
+  ['/tv', 'TV', Tv],
   ['/transactions', 'History', Receipt],
-  ['/meters', 'Meters', Gauge],
   ['/wallet', 'Wallet', Wallet],
-  ['/profile', 'Account', UserRound],
 ];
 
 function PageTitle({ title, sub, action }: { title: string; sub?: string; action?: React.ReactNode }) {
@@ -483,8 +495,18 @@ function BuyPage({
   const [scheduled, setScheduled] = useState('');
   const [error, setError] = useState('');
   const [paying, setPaying] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const idemKey = useRef(crypto.randomUUID());
   const repeating = repeat !== 'once';
+  const onScan = useCallback((r: Prefill | { meter: string }) => {
+    setScanning(false);
+    if (!r) return;
+    if ('disco' in r) {
+      setProvider(r.disco);
+      setMeterType(r.type);
+    }
+    setMeterNumber(r.meter);
+  }, []);
   const loadSchedules = useCallback(() => {
     account
       .schedules()
@@ -689,19 +711,30 @@ function BuyPage({
           </div>
 
           <Field label="Meter number">
-            <div className="relative">
-              <input
-                inputMode="numeric"
-                autoComplete="off"
-                value={meterNumber}
-                onChange={(e) => setMeterNumber(e.target.value.replace(/\D/g, '').slice(0, 20))}
-                placeholder="Enter your meter number"
-                className={`${inputCls} pr-11 tracking-wide`}
-              />
-              <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2">
-                {verifying ? <Loader2 size={18} className="animate-spin text-white/40" /> : meter?.verified ? <Check size={18} className="text-zener-success" /> : null}
-              </span>
+            <div className="flex gap-2">
+              <div className="relative min-w-0 flex-1">
+                <input
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={meterNumber}
+                  onChange={(e) => setMeterNumber(e.target.value.replace(/\D/g, '').slice(0, 20))}
+                  placeholder="Enter your meter number"
+                  className={`${inputCls} pr-11 tracking-wide`}
+                />
+                <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2">
+                  {verifying ? <Loader2 size={18} className="animate-spin text-white/40" /> : meter?.verified ? <Check size={18} className="text-zener-success" /> : null}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setScanning(true)}
+                aria-label="Scan meter QR code"
+                className="flex shrink-0 items-center gap-2 rounded-xl border border-white/[0.09] px-4 text-sm font-semibold text-white/70 transition hover:border-white/25 hover:text-white"
+              >
+                <ScanLine size={18} /> <span className="hidden sm:inline">Scan</span>
+              </button>
             </div>
+            {scanning ? <ScanDialog onResult={onScan} onClose={() => setScanning(false)} /> : null}
             {meter?.verified ? (
               <p className="mt-2 text-sm">
                 <span className="font-semibold text-white">{meter.customer_name}</span>
@@ -1042,6 +1075,384 @@ function AutoBuyCard({ schedules, onChange }: { schedules: Schedule[]; onChange:
   );
 }
 
+// ---------------------------------------------------------------------------
+// Airtime, data and cable TV (paid from the wallet)
+// ---------------------------------------------------------------------------
+
+const AIRTIME_QUICK = [100, 200, 500, 1000];
+
+const BILL_STATUS: Record<Bill['status'], [string, string]> = {
+  successful: ['Successful', 'text-zener-success'],
+  processing: ['Processing', 'text-yellow-300/90'],
+  needs_review: ['Delayed', 'text-yellow-300/90'],
+  refunded: ['Refunded', 'text-white/50'],
+};
+
+function billTitle(b: Bill): string {
+  if (b.category === 'airtime') return `${b.service_name} airtime`;
+  if (b.category === 'data') return b.product_name || `${b.service_name} data`;
+  return `${b.service_name} · ${b.product_name}`;
+}
+
+function BillsPage({ kind }: { kind: 'phone' | 'cable' }) {
+  const { user, nav, walletKobo, refreshWallet } = useAcct();
+  const [networks, setNetworks] = useState<BillService[]>([]);
+  const [providers, setProviders] = useState<BillService[]>([]);
+  const [limits, setLimits] = useState({ min: 50, max: 50000 });
+  const [category, setCategory] = useState<'airtime' | 'data'>('airtime');
+  const [service, setService] = useState(kind === 'cable' ? 'DSTV' : '');
+  const [recipient, setRecipient] = useState(kind === 'phone' ? user.phone || '' : '');
+  const [lookup, setLookup] = useState<{ name?: string; current?: string; error?: string }>({});
+  const [checking, setChecking] = useState(false);
+  const [products, setProducts] = useState<BillProduct[]>([]);
+  const [productId, setProductId] = useState('');
+  const [loadingPlans, setLoadingPlans] = useState(false);
+  const [amount, setAmount] = useState('');
+  const [error, setError] = useState('');
+  const [paying, setPaying] = useState(false);
+  const [result, setResult] = useState<Bill | null>(null);
+  const [recent, setRecent] = useState<Bill[]>([]);
+  const idemKey = useRef(crypto.randomUUID());
+  const cat = kind === 'cable' ? 'cable' : category;
+
+  const loadRecent = useCallback(() => {
+    bills
+      .list(50)
+      .then((r) => setRecent(r.bills.filter((b) => (kind === 'cable' ? b.category === 'cable' : b.category !== 'cable'))))
+      .catch(() => undefined);
+  }, [kind]);
+
+  useEffect(() => {
+    bills
+      .services()
+      .then((r) => {
+        setNetworks(r.networks);
+        setProviders(r.cable);
+        setLimits({ min: koboToNaira(r.airtime.min_kobo), max: koboToNaira(r.airtime.max_kobo) });
+      })
+      .catch((e) => setError(message(e)));
+    loadRecent();
+  }, [loadRecent]);
+
+  // A changed form is a new purchase.
+  useEffect(() => {
+    idemKey.current = crypto.randomUUID();
+  }, [cat, service, recipient, productId, amount]);
+
+  // Phone: find the network once the number is complete. Cable: check the card.
+  useEffect(() => {
+    setLookup({});
+    const digits = recipient.replace(/\D/g, '');
+    if (kind === 'phone' ? digits.length < 11 : digits.length < 8 || !service) return;
+    let live = true;
+    const t = window.setTimeout(async () => {
+      setChecking(true);
+      try {
+        const r = await bills.lookup(cat, service, recipient);
+        if (!live) return;
+        if (kind === 'phone') {
+          if (r.network) setService(r.network);
+        } else setLookup({ name: r.customer_name, current: r.current_package });
+      } catch (e) {
+        if (live) setLookup({ error: message(e) });
+      } finally {
+        if (live) setChecking(false);
+      }
+    }, 500);
+    return () => {
+      live = false;
+      window.clearTimeout(t);
+    };
+    // The network is an output of the phone lookup, so it is not a dependency there.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recipient, kind === 'cable' ? service : '']);
+
+  // Plans for data and cable.
+  useEffect(() => {
+    setProducts([]);
+    setProductId('');
+    if (cat === 'airtime' || !service) return;
+    let live = true;
+    setLoadingPlans(true);
+    bills
+      .products(cat, service)
+      .then((r) => live && setProducts(r.products))
+      .catch((e) => live && setError(message(e)))
+      .finally(() => live && setLoadingPlans(false));
+    return () => {
+      live = false;
+    };
+  }, [cat, service]);
+
+  const product = products.find((p) => p.id === productId);
+  const value = cat === 'airtime' ? Number(amount) : product ? koboToNaira(product.price_kobo) : 0;
+  const amountOk = cat === 'airtime' ? Number.isInteger(value) && value >= limits.min && value <= limits.max : !!product;
+  const phoneOk = recipient.replace(/\D/g, '').length >= 10;
+  const short = walletKobo !== null && amountOk && nairaToKobo(value) > walletKobo;
+  const ready = !!service && amountOk && !short && (kind === 'phone' ? phoneOk : !!lookup.name);
+  const groups = products.reduce<Record<string, BillProduct[]>>((acc, p) => {
+    const g = p.group || 'Plans';
+    (acc[g] ||= []).push(p);
+    return acc;
+  }, {});
+  const serviceName = (kind === 'cable' ? providers : networks).find((n) => n.code === service)?.name;
+
+  const pay = async () => {
+    setError('');
+    setPaying(true);
+    try {
+      let b = await bills.buy(
+        { category: cat, service, recipient, product_id: cat === 'airtime' ? undefined : productId, amount_kobo: cat === 'airtime' ? nairaToKobo(value) : undefined },
+        idemKey.current,
+      );
+      setResult(b);
+      refreshWallet();
+      for (let i = 0; i < 20 && b.status === 'processing'; i++) {
+        await new Promise((r) => window.setTimeout(r, 3000));
+        b = await bills.get(b.id);
+        setResult(b);
+      }
+      refreshWallet();
+      loadRecent();
+    } catch (e) {
+      setError(message(e));
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  const again = () => {
+    setResult(null);
+    setAmount('');
+    setProductId('');
+    idemKey.current = crypto.randomUUID();
+  };
+
+  return (
+    <>
+      <PageTitle
+        title={kind === 'cable' ? 'Cable TV' : 'Airtime & data'}
+        sub={kind === 'cable' ? 'Renew DStv, GOtv or StarTimes from your wallet in seconds.' : 'Top up any MTN, Airtel, Glo or 9mobile number from your wallet.'}
+      />
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className={`${card} min-w-0 space-y-6 p-5 sm:p-7`}>
+          {result ? (
+            <div className="space-y-4">
+              <div
+                className={`rounded-2xl border p-6 text-sm ${
+                  result.status === 'successful'
+                    ? 'border-zener-success/30 bg-zener-success/[0.06]'
+                    : result.status === 'refunded'
+                      ? 'border-white/[0.08]'
+                      : 'border-yellow-300/20 bg-yellow-300/[0.04]'
+                }`}
+              >
+                <p className="flex items-center gap-2 text-base font-semibold">
+                  {result.status === 'processing' ? <Loader2 size={18} className="animate-spin text-zener-gold" /> : result.status === 'successful' ? <Check size={18} className="text-zener-success" /> : null}
+                  {result.status === 'successful' ? 'Done' : result.status === 'refunded' ? 'Not completed' : 'Processing'}
+                </p>
+                <p className="mt-1.5 text-white/60">
+                  {result.status === 'successful'
+                    ? `${billTitle(result)} for ${result.customer_name || result.recipient} — ${naira(result.amount_kobo)}.`
+                    : result.message}
+                </p>
+              </div>
+              <dl className="space-y-3 text-sm">
+                <SummaryRow label={kind === 'cable' ? 'Provider' : 'Network'} value={result.service_name} />
+                <SummaryRow label={kind === 'cable' ? 'Smartcard / IUC' : 'Phone number'} value={result.recipient} />
+                {result.customer_name ? <SummaryRow label="Name" value={result.customer_name} /> : null}
+                {result.product_name ? <SummaryRow label={kind === 'cable' ? 'Package' : 'Plan'} value={result.product_name} /> : null}
+                <SummaryRow label="Reference" value={result.id.slice(0, 8).toUpperCase()} />
+                <SummaryRow label="Amount" value={naira(result.amount_kobo)} strong />
+              </dl>
+              {result.sandbox ? <p className="text-xs text-yellow-300/80">Test mode: nothing was sent to the network.</p> : null}
+              <button
+                type="button"
+                onClick={again}
+                className="flex h-12 w-full items-center justify-center rounded-xl border border-white/[0.1] text-sm font-semibold text-white/80 transition hover:border-white/25 hover:text-white"
+              >
+                Buy another
+              </button>
+            </div>
+          ) : (
+            <>
+              {kind === 'phone' ? (
+                <Field label="What do you want to buy?">
+                  <Segmented value={category} onChange={setCategory} options={[['airtime', 'Airtime'], ['data', 'Data']]} />
+                </Field>
+              ) : (
+                <Field label="Provider">
+                  <Segmented value={service as string} onChange={setService} options={providers.map((p) => [p.code, p.name] as [string, string])} />
+                </Field>
+              )}
+
+              <Field label={kind === 'cable' ? 'Smartcard / IUC number' : 'Phone number'}>
+                <div className="relative">
+                  <input
+                    inputMode={kind === 'cable' ? 'numeric' : 'tel'}
+                    autoComplete={kind === 'cable' ? 'off' : 'tel'}
+                    value={recipient}
+                    onChange={(e) => setRecipient(e.target.value.replace(kind === 'cable' ? /\D/g : /[^\d+ ]/g, '').slice(0, 20))}
+                    placeholder={kind === 'cable' ? 'Enter the number on your decoder' : '0803 123 4567'}
+                    className={`${inputCls} pr-11 tracking-wide`}
+                  />
+                  <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2">
+                    {checking ? <Loader2 size={18} className="animate-spin text-white/40" /> : lookup.name ? <Check size={18} className="text-zener-success" /> : null}
+                  </span>
+                </div>
+                {kind === 'cable' ? (
+                  lookup.name ? (
+                    <p className="mt-2 text-sm">
+                      <span className="font-semibold text-white">{lookup.name}</span>
+                      {lookup.current ? <span className="text-white/40"> · Current package: {lookup.current}</span> : null}
+                    </p>
+                  ) : lookup.error ? (
+                    <p className="mt-2 text-sm text-zener-danger">{lookup.error}</p>
+                  ) : (
+                    <p className="mt-2 text-xs text-white/35">We confirm the name on the card before you pay.</p>
+                  )
+                ) : lookup.error ? (
+                  <p className="mt-2 text-xs text-yellow-300/90">{lookup.error}</p>
+                ) : null}
+              </Field>
+
+              {kind === 'phone' ? (
+                <Field label="Network" hint={service ? 'Detected from the number — change it if you ported' : undefined}>
+                  <Segmented value={service} onChange={setService} options={networks.map((n) => [n.code, n.name] as [string, string])} />
+                </Field>
+              ) : null}
+
+              {cat === 'airtime' ? (
+                <Field label="Amount" hint={`₦${limits.min.toLocaleString('en-NG')} – ₦${limits.max.toLocaleString('en-NG')}`}>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-lg font-semibold text-white/40">₦</span>
+                    <input
+                      inputMode="numeric"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder="0"
+                      className={`${inputCls} pl-9 text-lg font-semibold`}
+                    />
+                  </div>
+                  <div className="mt-2.5 grid grid-cols-4 gap-2">
+                    {AIRTIME_QUICK.map((q) => (
+                      <button
+                        key={q}
+                        type="button"
+                        onClick={() => setAmount(String(q))}
+                        className={`rounded-lg border py-2 text-xs font-semibold transition ${
+                          value === q ? 'border-zener-gold/60 bg-zener-gold/10 text-zener-gold' : 'border-white/[0.08] text-white/55 hover:border-white/20 hover:text-white'
+                        }`}
+                      >
+                        ₦{q.toLocaleString('en-NG')}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+              ) : (
+                <Field label={kind === 'cable' ? 'Package' : 'Data plan'}>
+                  <select
+                    value={productId}
+                    onChange={(e) => setProductId(e.target.value)}
+                    disabled={!service || loadingPlans}
+                    className={`${inputCls} disabled:opacity-50`}
+                  >
+                    <option value="" className="bg-zener-surface">
+                      {!service ? (kind === 'cable' ? 'Choose a provider first' : 'Enter the phone number first') : loadingPlans ? 'Loading plans…' : 'Choose a plan'}
+                    </option>
+                    {Object.entries(groups).map(([g, ps]) => (
+                      <optgroup key={g} label={g.charAt(0).toUpperCase() + g.slice(1)} className="bg-zener-surface">
+                        {ps.map((p) => (
+                          <option key={p.id} value={p.id} className="bg-zener-surface">
+                            {p.name} — {naira(p.price_kobo)}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </Field>
+              )}
+
+              <Field label="Pay with">
+                <MethodOption active onClick={() => undefined} title="Wallet" sub={walletKobo === null ? 'Balance —' : `Balance ${naira(walletKobo)}`} />
+                {short ? (
+                  <p className="mt-2 text-sm text-yellow-300/90">
+                    Your wallet balance is too low.{' '}
+                    <button type="button" onClick={() => nav('/wallet')} className="font-semibold text-zener-gold hover:underline">
+                      Fund wallet
+                    </button>
+                  </p>
+                ) : null}
+              </Field>
+
+              {error ? <p className="rounded-lg bg-zener-danger/10 px-3.5 py-2.5 text-sm text-zener-danger">{error}</p> : null}
+
+              <button
+                type="button"
+                disabled={paying || !ready}
+                onClick={() => void pay()}
+                className="flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-zener-gold text-[15px] font-bold text-black transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {paying && <Loader2 size={18} className="animate-spin" />}
+                {paying ? 'Paying…' : value > 0 ? `Pay ${formatCurrency(value)}` : 'Pay'}
+              </button>
+              <p className="flex items-center justify-center gap-1.5 text-center text-xs text-white/35">
+                <Lock size={12} /> Paid from your wallet. If it doesn't go through, the money comes straight back.
+              </p>
+            </>
+          )}
+        </div>
+
+        <div className="space-y-6">
+          <div className={`${card} p-6`}>
+            <p className="mb-4 text-xs font-semibold text-white/40">Your order</p>
+            <dl className="space-y-3 text-sm">
+              <SummaryRow label={kind === 'cable' ? 'Provider' : 'Network'} value={serviceName} />
+              <SummaryRow label={kind === 'cable' ? 'Smartcard' : 'Phone'} value={recipient || undefined} />
+              {kind === 'cable' ? <SummaryRow label="Name" value={lookup.name} /> : <SummaryRow label="Type" value={category === 'airtime' ? 'Airtime' : 'Data'} />}
+              {cat !== 'airtime' ? <SummaryRow label={kind === 'cable' ? 'Package' : 'Plan'} value={product?.name} /> : null}
+              <div className="border-t border-white/[0.08] pt-3">
+                <SummaryRow label="Total" value={value > 0 ? formatCurrency(value) : undefined} strong />
+              </div>
+            </dl>
+          </div>
+          {recent.length ? (
+            <div className={`${card} p-6`}>
+              <p className="mb-2 text-xs font-semibold text-white/40">Recent</p>
+              <ul className="divide-y divide-white/[0.06]">
+                {recent.slice(0, 5).map((b) => (
+                  <li key={b.id}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setResult(null);
+                        if (kind === 'phone') setCategory(b.category === 'data' ? 'data' : 'airtime');
+                        setService(b.service);
+                        setRecipient(b.recipient);
+                        if (b.category === 'airtime') setAmount(String(koboToNaira(b.amount_kobo)));
+                      }}
+                      className="flex w-full items-center justify-between gap-3 py-2.5 text-left text-sm"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-white/80">{b.recipient}</span>
+                        <span className="block truncate text-xs text-white/35">{billTitle(b)}</span>
+                      </span>
+                      <span className="shrink-0 text-right">
+                        <span className="block font-semibold">{naira(b.amount_kobo)}</span>
+                        <span className={`block text-xs ${BILL_STATUS[b.status][1]}`}>{BILL_STATUS[b.status][0]}</span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </>
+  );
+}
+
 // A completed purchase of real electricity (test-mode orders are left out).
 const bought = (o: GuestOrder) => (o.status === 'vended' || o.status === 'delivered') && !o.sandbox;
 
@@ -1368,11 +1779,12 @@ async function drawSticker(m: ApiMeter, link: string, brandName: string, logoUrl
   const qr = await brandedQr(link, 600, logoUrl);
   g.drawImage(qr, (W - 600) / 2, 330, 600, 600);
 
-  g.font = `800 58px ui-monospace, SFMono-Regular, Menlo, monospace`;
-  g.fillText(m.meter_number, W / 2, 1010);
+  // The meter number is inside the QR; the sticker only names the meter.
+  g.font = `700 40px ${font}`;
+  g.fillText((m.label || m.customer_name || '').slice(0, 32), W / 2, 1012);
   g.fillStyle = '#555555';
   g.font = `500 32px ${font}`;
-  g.fillText([m.provider_name || m.provider_code, m.customer_name].filter(Boolean).join(' · ').slice(0, 48), W / 2, 1068);
+  g.fillText(m.provider_name || m.provider_code, W / 2, 1066);
   g.fillStyle = '#999999';
   g.font = `500 28px ${font}`;
   g.fillText(window.location.host, W / 2, 1140);
@@ -1669,7 +2081,13 @@ function MonthChart({ months }: { months: WalletActivity['months'] }) {
   );
 }
 
-const ENTRY_LABEL: Record<string, string> = { wallet_fund: 'Wallet top-up', purchase: 'Electricity purchase', refund: 'Refund' };
+const ENTRY_LABEL: Record<string, string> = {
+  wallet_fund: 'Wallet top-up',
+  purchase: 'Electricity purchase',
+  refund: 'Refund',
+  bill: 'Airtime, data or TV',
+  bill_refund: 'Refund',
+};
 
 function WalletEntries({ entries, nav }: { entries: WalletEntry[]; nav: Nav }) {
   const title = (e: WalletEntry) => ENTRY_LABEL[e.kind] ?? (e.memo || e.kind);
@@ -2127,6 +2545,7 @@ function OrderView({
   const [sharing, setSharing] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [resent, setResent] = useState('');
   const loadRef = useRef(load);
   const finalRef = useRef(onFinal);
   const loadedRef = useRef(onLoad);
@@ -2225,6 +2644,21 @@ function OrderView({
           {canShare && order.token ? (
             <button type="button" onClick={() => setSharing(true)} className={actionBtn}>
               <QrCode size={15} /> Share as QR
+            </button>
+          ) : null}
+          {canShare && order.token ? (
+            <button
+              type="button"
+              disabled={!!resent}
+              onClick={() =>
+                account
+                  .resend(order.id)
+                  .then((r) => setResent(`Sent to ${r.sent_to}`))
+                  .catch((e) => setResent(message(e)))
+              }
+              className={`${actionBtn} col-span-2 disabled:opacity-60`}
+            >
+              <Mail size={15} /> {resent || 'Email me this token again'}
             </button>
           ) : null}
         </div>

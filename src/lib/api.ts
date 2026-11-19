@@ -308,6 +308,45 @@ export const guest = {
 export const koboToNaira = (k: number) => k / 100;
 export const nairaToKobo = (n: number) => Math.round(n * 100);
 
+// ---- Airtime, data and cable TV (paid from the wallet) ----
+export type BillCategory = 'airtime' | 'data' | 'cable';
+export type BillService = { code: string; name: string };
+export type BillProduct = { id: string; name: string; price_kobo: number; group?: string };
+export type Bill = {
+  id: string;
+  category: BillCategory;
+  service: string;
+  service_name: string;
+  recipient: string;
+  customer_name: string;
+  product_id: string;
+  product_name: string;
+  amount_kobo: number;
+  fee_kobo: number;
+  status: 'processing' | 'successful' | 'refunded' | 'needs_review';
+  message?: string;
+  sandbox: boolean;
+  created_at: string;
+  completed_at: string | null;
+};
+
+export const bills = {
+  services: () =>
+    request<{ networks: BillService[]; cable: BillService[]; airtime: { min_kobo: number; max_kobo: number } }>('GET', '/v1/bills/services'),
+  products: (category: 'data' | 'cable', service: string) =>
+    request<{ products: BillProduct[] }>('GET', `/v1/bills/products?category=${category}&service=${encodeURIComponent(service)}`),
+  lookup: (category: BillCategory, service: string, recipient: string) =>
+    request<{ network?: string; network_name?: string; phone?: string; customer_name?: string; current_package?: string }>('POST', '/v1/bills/lookup', {
+      category,
+      service,
+      recipient,
+    }),
+  buy: (input: { category: BillCategory; service: string; recipient: string; product_id?: string; amount_kobo?: number }, idempotencyKey: string) =>
+    request<Bill>('POST', '/v1/bills', input, { 'Idempotency-Key': idempotencyKey }),
+  list: (limit = 20) => request<{ bills: Bill[] }>('GET', `/v1/bills?limit=${limit}`),
+  get: (id: string) => request<Bill>('GET', `/v1/bills/${encodeURIComponent(id)}`),
+};
+
 // An auto-buy: electricity bought from the wallet every week or month, at 8:00 am Lagos time.
 export type Schedule = {
   id: string;
@@ -333,6 +372,7 @@ export const account = {
     idempotencyKey: string,
   ) => request<GuestOrder>('POST', '/v1/orders', input, { 'Idempotency-Key': idempotencyKey }),
   share: (id: string) => request<{ code: string; expires_at: string }>('POST', `/v1/orders/${encodeURIComponent(id)}/share`),
+  resend: (id: string) => request<{ sent_to: string }>('POST', `/v1/orders/${encodeURIComponent(id)}/resend`),
   statement: (from: string, to: string) => request<Statement>('GET', `/v1/statement?from=${from}&to=${to}`),
   orders: (limit = 20) => request<{ orders: GuestOrder[] }>('GET', `/v1/orders?limit=${limit}`),
   get: (id: string) => request<GuestOrder>('GET', `/v1/orders/${encodeURIComponent(id)}`),
