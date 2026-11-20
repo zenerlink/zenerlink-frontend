@@ -433,6 +433,23 @@ export type ReconItem = {
 
 // ---- Customer feedback ----
 export type FeedbackAsk = { ask: '' | 'purchase' | 'periodic'; order_id?: string };
+// ---- Identity (KYC) ----
+export type TierLimit = { tier: number; label: string; withdraw_daily_kobo: number; gift_daily_kobo: number; max_balance_kobo: number };
+export type KYCStatus = {
+  tier: number;
+  limits: TierLimit;
+  next?: TierLimit;
+  verified_at: string | null;
+  name: string;
+  attempts_left: number;
+  last?: { kind: 'bvn' | 'nin'; last4: string; status: string; reason: string; created_at: string };
+  available: boolean;
+};
+export const kyc = {
+  status: () => request<KYCStatus>('GET', '/v1/kyc'),
+  verify: (kind: 'bvn' | 'nin', number: string, date_of_birth: string) => request<KYCStatus>('POST', '/v1/kyc/verify', { kind, number, date_of_birth }),
+};
+
 export const feedback = {
   prompt: (orderId?: string) => request<FeedbackAsk>('GET', `/v1/feedback/prompt${orderId ? `?order_id=${encodeURIComponent(orderId)}` : ''}`),
   send: (input: { kind: 'purchase' | 'periodic'; order_id?: string; rating?: number | null; comment?: string }) =>

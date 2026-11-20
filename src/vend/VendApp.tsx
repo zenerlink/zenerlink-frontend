@@ -43,6 +43,7 @@ import { MissingPaymentDialog, WithdrawCard } from './money';
 import { StaffPage, isStaff } from './staff';
 import { GiftPage, UnitsPage } from './units';
 import { PeriodicFeedback, PurchaseFeedback } from './feedback';
+import { IdentityCard } from './identity';
 import type { ScanResult } from './scan';
 import { discoLogo } from '../assets/discos';
 import { BILL_LOGOS } from '../assets/bills';
@@ -3024,6 +3025,7 @@ function ProfilePage() {
   // Old "Change password" links land on the profile, at the password form.
   useEffect(() => {
     if (path.startsWith('/password')) window.setTimeout(() => document.getElementById('password')?.scrollIntoView({ behavior: 'smooth' }), 60);
+    if (window.location.hash === '#identity') window.setTimeout(() => document.getElementById('identity')?.scrollIntoView({ behavior: 'smooth' }), 400);
   }, [path]);
   const [name, setName] = useState(user.name);
   const [phone, setPhone] = useState(user.phone);
@@ -3077,6 +3079,7 @@ function ProfilePage() {
           {done ? <span className="text-sm text-zener-success">Saved.</span> : null}
         </div>
       </form>
+      <IdentityCard />
       <LinkedMeters />
       <PasswordForm />
       </div>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, Check, ChevronDown, Eye, EyeOff, Landmark, Loader2, Search, X } from 'lucide-react';
-import { ApiError, money, nairaToKobo } from '../lib/api';
+import { ApiError, kyc, money, nairaToKobo } from '../lib/api';
 import type { Bank, BankAccountLookup, BankLimits, Payout, ReportResult } from '../lib/api';
 import { askConfirm } from './confirm';
 import { ErrorBox, Field, card, inputCls, message, naira, shortDate } from './kit';
@@ -102,6 +102,14 @@ export function BankPicker({ banks, value, onChange }: { banks: Bank[]; value: s
 // WithdrawCard sends wallet money to a bank account. It hides itself where
 // withdrawals are not available.
 export function WithdrawCard({ walletKobo, onDone }: { walletKobo: number | null; onDone: () => void }) {
+  // Once identity checks are on, an unverified account is sent to verify first.
+  const [needsId, setNeedsId] = useState(false);
+  useEffect(() => {
+    kyc
+      .status()
+      .then((k) => setNeedsId(k.available && k.limits.withdraw_daily_kobo === 0))
+      .catch(() => undefined);
+  }, []);
   const [info, setInfo] = useState<({ banks: Bank[] } & BankLimits) | null | undefined>(undefined);
   const [payouts, setPayouts] = useState<Payout[]>([]);
   const [open, setOpen] = useState(false);
@@ -196,9 +204,18 @@ export function WithdrawCard({ walletKobo, onDone }: { walletKobo: number | null
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-base font-bold">Withdraw to bank</h2>
-          <p className="mt-1 text-sm text-white/45">Send your wallet balance to any Nigerian bank account.</p>
+          <p className="mt-1 text-sm text-white/45">
+            {needsId ? 'Verify your identity with your BVN or NIN first. It takes a minute.' : 'Send your wallet balance to any Nigerian bank account.'}
+          </p>
         </div>
-        {!open ? (
+        {needsId ? (
+          <a
+            href="/profile#identity"
+            className="flex h-10 shrink-0 items-center gap-2 rounded-lg bg-zener-gold px-4 text-sm font-bold text-black hover:brightness-110"
+          >
+            Verify identity
+          </a>
+        ) : !open ? (
           <button
             type="button"
             onClick={() => {
