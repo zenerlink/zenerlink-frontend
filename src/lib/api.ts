@@ -48,7 +48,7 @@ export type Branding = {
   sandbox: boolean;
 };
 
-export type User = { id: string; email: string; phone: string; name: string; role: string };
+export type User = { id: string; email: string; phone: string; name: string; role: string; avatar?: string };
 
 export type WalletEntry = {
   id: number;
@@ -629,6 +629,8 @@ export const account = {
     ),
   get: (id: string) => request<GuestOrder>('GET', `/v1/orders/${encodeURIComponent(id)}`),
   updateProfile: (input: { name?: string; phone?: string }) => request<User>('PATCH', '/v1/me', input),
+  setAvatar: (image: string) => request<{ avatar: string }>('PUT', '/v1/me/avatar', { image }),
+  removeAvatar: () => request<{ avatar: string }>('DELETE', '/v1/me/avatar'),
   changePassword: (current_password: string, new_password: string) =>
     request<void>('POST', '/v1/me/password', { current_password, new_password }),
   removeMeter: (id: string) => request<void>('DELETE', `/v1/meters/${encodeURIComponent(id)}`),

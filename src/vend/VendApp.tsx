@@ -4,6 +4,7 @@ import {
   ArrowDownToLine,
   ArrowUpRight,
   Bell,
+  Camera,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -173,6 +174,8 @@ export default function VendRoot() {
           nav={nav}
           onDone={(u) => {
             setUser(u);
+            // The sign-in reply has no profile picture; /v1/me does.
+            api.me().then((r) => r.user.avatar && setUser((cur) => (cur ? { ...cur, avatar: r.user.avatar } : cur)), () => undefined);
             // Land on Buy electricity, unless they came from a buy link or a receipt.
             if (!prefill && !orderMatch && !payCode && !gift) nav('/');
           }}
@@ -278,6 +281,27 @@ const initials = (u: User) =>
     .map((w) => w[0]!.toUpperCase())
     .join('');
 
+// The profile picture, or the initials when there is none.
+function Avatar({ user, className }: { user: User; className: string }) {
+  return user.avatar ? (
+    <img src={user.avatar} alt="" className={`${className} rounded-full object-cover`} />
+  ) : (
+    <span className={`${className} grid place-items-center rounded-full bg-zener-gold/15 font-bold text-zener-gold`}>{initials(user)}</span>
+  );
+}
+
+// Crops the chosen photo to a centred square and shrinks it to 256px, so the
+// upload stays small whatever the phone camera produced.
+async function squarePhoto(file: File): Promise<string> {
+  const bmp = await createImageBitmap(file);
+  const side = Math.min(bmp.width, bmp.height);
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 256;
+  canvas.getContext('2d')!.drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, 256, 256);
+  bmp.close();
+  return canvas.toDataURL('image/jpeg', 0.85);
+}
+
 const firstName = (u: User) => (u.name || '').trim().split(/\s+/)[0] || '';
 
 // ---------------------------------------------------------------------------
@@ -376,7 +400,7 @@ function Shell({ children }: { children: React.ReactNode }) {
                 className="flex items-center gap-2 rounded-full py-1 pl-1 pr-2 text-[13px] font-semibold text-white/80 hover:text-white"
                 aria-expanded={menu}
               >
-                <span className="grid h-8 w-8 place-items-center rounded-full bg-zener-gold/15 text-[11px] font-bold text-zener-gold">{initials(user)}</span>
+                <Avatar user={user} className="h-8 w-8 text-[11px]" />
                 <span className="hidden max-w-[120px] truncate sm:inline">{firstName(user) || 'Account'}</span>
                 <ChevronDown size={15} className="text-white/40" />
               </button>
@@ -3038,6 +3062,44 @@ function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
+  const photoRef = useRef<HTMLInputElement>(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
+
+  const pickPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setError('');
+    setPhotoBusy(true);
+    let image: string;
+    try {
+      image = await squarePhoto(file);
+    } catch {
+      setPhotoBusy(false);
+      return setError('That picture could not be opened. Try a JPEG or PNG photo.');
+    }
+    try {
+      const r = await account.setAvatar(image);
+      setUser({ ...user, avatar: r.avatar });
+    } catch (err) {
+      setError(message(err));
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+
+  const removePhoto = async () => {
+    setError('');
+    setPhotoBusy(true);
+    try {
+      await account.removeAvatar();
+      setUser({ ...user, avatar: undefined });
+    } catch (err) {
+      setError(message(err));
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -3062,10 +3124,37 @@ function ProfilePage() {
       <div className="grid max-w-5xl gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <form onSubmit={(e) => void save(e)} className={`${card} space-y-5 p-6`}>
         <div className="flex items-center gap-4 pb-2">
-          <span className="grid h-14 w-14 place-items-center rounded-full bg-zener-gold/15 text-lg font-bold text-zener-gold">{initials(user)}</span>
+          <button
+            type="button"
+            onClick={() => photoRef.current?.click()}
+            disabled={photoBusy}
+            className="group relative shrink-0 rounded-full"
+            aria-label={user.avatar ? 'Change profile picture' : 'Add a profile picture'}
+          >
+            <Avatar user={user} className="h-16 w-16 text-lg" />
+            <span className="absolute inset-0 grid place-items-center rounded-full bg-black/55 opacity-0 transition group-hover:opacity-100">
+              <Camera size={18} className="text-white" />
+            </span>
+            {photoBusy ? (
+              <span className="absolute inset-0 grid place-items-center rounded-full bg-black/55">
+                <Loader2 size={18} className="animate-spin text-white" />
+              </span>
+            ) : null}
+          </button>
+          <input ref={photoRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic" className="hidden" onChange={(e) => void pickPhoto(e)} />
           <div className="min-w-0">
             <p className="truncate font-bold">{user.name || 'Your account'}</p>
             <p className="truncate text-sm text-white/45">{user.email}</p>
+            <div className="mt-1 flex gap-3 text-xs font-semibold">
+              <button type="button" onClick={() => photoRef.current?.click()} disabled={photoBusy} className="text-zener-gold hover:brightness-110 disabled:opacity-40">
+                {user.avatar ? 'Change photo' : 'Add photo'}
+              </button>
+              {user.avatar ? (
+                <button type="button" onClick={() => void removePhoto()} disabled={photoBusy} className="text-white/45 hover:text-white disabled:opacity-40">
+                  Remove
+                </button>
+              ) : null}
+            </div>
           </div>
         </div>
         <Field label="Full name">
