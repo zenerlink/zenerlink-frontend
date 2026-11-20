@@ -285,6 +285,8 @@ export type GuestOrder = {
   bank_transfer?: BankTransfer;
   sandbox: boolean;
   message?: string;
+  // Someone else bought this to pay the customer's request.
+  paid_for_you?: boolean;
   created_at: string;
 };
 

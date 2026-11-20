@@ -2244,7 +2244,10 @@ function TransactionsPage() {
               {orders.map((o) => (
                 <tr key={o.id} onClick={() => nav(`/order/${o.id}`)} className="cursor-pointer hover:bg-white/[0.03]">
                   <td className="whitespace-nowrap px-5 py-4 text-white/55">{shortDate(o.created_at)}</td>
-                  <td className="px-5 py-4 font-medium text-white/85">{o.meter_number}</td>
+                  <td className="px-5 py-4 font-medium text-white/85">
+                    {o.meter_number}
+                    {o.paid_for_you ? <span className="block text-xs font-semibold text-zener-gold">Paid for you</span> : null}
+                  </td>
                   <td className="px-5 py-4 text-white/60">{o.provider_name}</td>
                   <td className="whitespace-nowrap px-5 py-4 text-right font-bold">{naira(o.amount_kobo)}</td>
                   <td className="whitespace-nowrap px-5 py-4 text-right text-white/60">{o.energy_kwh ? `${o.energy_kwh.toFixed(1)} kWh` : '—'}</td>
@@ -2271,7 +2274,10 @@ function TransactionsPage() {
                 <button type="button" onClick={() => nav(`/order/${o.id}`)} className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left">
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-semibold text-white/90">{o.meter_number}</span>
-                    <span className="block truncate text-xs text-white/40">{o.provider_name} · {shortDate(o.created_at)}</span>
+                    <span className="block truncate text-xs text-white/40">
+                      {o.paid_for_you ? <span className="font-semibold text-zener-gold">Paid for you · </span> : null}
+                      {o.provider_name} · {shortDate(o.created_at)}
+                    </span>
                   </span>
                   <span className="shrink-0 text-right">
                     <span className="block text-sm font-bold">{naira(o.amount_kobo)}</span>
