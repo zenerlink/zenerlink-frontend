@@ -3380,6 +3380,27 @@ function OrderView({
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState('');
   const [missing, setMissing] = useState(false);
+  // "I've sent the money" asks the bank right away; the token still only
+  // comes once the bank confirms the transfer arrived.
+  const [checking, setChecking] = useState(false);
+  const [sentAt, setSentAt] = useState<number | null>(null);
+  const [notYet, setNotYet] = useState(false);
+  const checkNow = async () => {
+    setChecking(true);
+    setNotYet(false);
+    setSentAt((t) => t ?? Date.now());
+    try {
+      const o = await loadRef.current();
+      setOrder(o);
+      loadedRef.current?.(o);
+      if (FINAL.includes(o.status)) finalRef.current?.();
+      else setNotYet(true);
+    } catch (e) {
+      setCancelError(message(e));
+    } finally {
+      setChecking(false);
+    }
+  };
   const cancelOrder = async () => {
     if (!order) return;
     const ok = await askConfirm({
@@ -3475,6 +3496,20 @@ function OrderView({
             <div className="space-y-2">
               <button
                 type="button"
+                disabled={checking}
+                onClick={() => void checkNow()}
+                className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-zener-gold text-sm font-bold text-black hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {checking ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}{' '}
+                {checking ? 'Checking for your transfer…' : sentAt ? 'Check again' : "I've sent the money"}
+              </button>
+              {notYet && !checking ? (
+                <p className="text-center text-sm text-white/60">
+                  We haven't received it yet. Transfers can take a few minutes, and this page updates by itself the moment it lands.
+                </p>
+              ) : null}
+              <button
+                type="button"
                 disabled={cancelling}
                 onClick={() => void cancelOrder()}
                 className="flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-white/[0.1] text-sm font-semibold text-white/70 transition hover:border-zener-danger/50 hover:text-zener-danger disabled:opacity-50"
@@ -3482,7 +3517,11 @@ function OrderView({
                 {cancelling ? <Loader2 size={16} className="animate-spin" /> : <X size={16} />} Cancel order
               </button>
               {cancelError ? <p className="text-center text-sm text-zener-danger">{cancelError}</p> : null}
-              <button type="button" onClick={() => setMissing(true)} className="w-full py-1 text-center text-xs font-semibold text-white/45 hover:text-white">
+              <button
+                type="button"
+                onClick={() => setMissing(true)}
+                className={`w-full py-1 text-center text-xs font-semibold hover:text-white ${sentAt && Date.now() - sentAt > 5 * 60_000 ? 'text-zener-gold' : 'text-white/45'}`}
+              >
                 I've paid but nothing happened
               </button>
             </div>
