@@ -2080,13 +2080,15 @@ function UnitsCard({ orders }: { orders: GuestOrder[] }) {
   const kwh = thisMonth.reduce((t, o) => t + (o.energy_kwh || 0), 0);
   const spent = thisMonth.reduce((t, o) => t + o.amount_kobo, 0);
   const last = done[0];
+  // Days of the month so far, today included: "in 22 days" on the 22nd.
+  const days = Number(new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' }).slice(8, 10));
   if (!done.length) return null;
   return (
     <div className={`${card} p-6`}>
       <p className="text-xs font-semibold text-white/40">Units bought this month</p>
       <p className="mt-2 text-3xl font-black tracking-tight text-zener-gold">{formatKwh(kwh)}</p>
       <p className="mt-1 text-xs text-white/45">
-        {thisMonth.length} {thisMonth.length === 1 ? 'purchase' : 'purchases'} · {naira(spent)}
+        {thisMonth.length} {thisMonth.length === 1 ? 'purchase' : 'purchases'} in {days} {days === 1 ? 'day' : 'days'} · {naira(spent)}
       </p>
       {last ? (
         <dl className="mt-4 space-y-2 border-t border-white/[0.08] pt-3 text-sm">
