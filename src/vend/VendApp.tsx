@@ -324,7 +324,7 @@ const NAV: [string, string, (p: { size?: number }) => React.ReactNode][] = [
   ['/help', 'Help', LifeBuoy],
 ];
 
-// The Z logo as a nav icon, tinted with the text colour like the other icons.
+// The Zenerlink mark as a nav icon, tinted with the text colour like the other icons.
 function ZMark({ size = 17 }: { size?: number }) {
   const img = `url("${logo}")`;
   return (
@@ -332,8 +332,10 @@ function ZMark({ size = 17 }: { size?: number }) {
       aria-hidden="true"
       className="inline-block shrink-0 bg-current"
       style={{
-        width: size,
+        // The mark is wider than tall: let it spill past its square evenly so the label stays aligned.
+        width: size * 1.4,
         height: size,
+        marginInline: -size * 0.2,
         WebkitMaskImage: img,
         maskImage: img,
         WebkitMaskSize: 'contain',
@@ -2496,8 +2498,10 @@ async function drawSticker(m: ApiMeter, link: string, brandName: string, logoUrl
   let x = W / 2;
   try {
     const logo = await loadImage(logoUrl);
-    g.drawImage(logo, 0, 0, logo.width || 64, logo.height || 64, 70, 53, 64, 64);
-    x = 150;
+    const lh = 44;
+    const lw = logo.width && logo.height ? Math.min((lh * logo.width) / logo.height, 84) : lh;
+    g.drawImage(logo, 70, 85 - lh / 2, lw, lh);
+    x = 70 + lw + 16;
   } catch {
     /* sticker still works without the logo */
   }

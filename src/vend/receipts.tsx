@@ -61,7 +61,9 @@ async function drawReceipt(o: GuestOrder, brand: string): Promise<string> {
   g.fillRect(0, 0, W, 150);
   try {
     const mark = await loadImage(logo);
-    g.drawImage(mark, 60, 47, 56, 56);
+    const mh = 40;
+    const mw = mark.width && mark.height ? (mh * mark.width) / mark.height : mh;
+    g.drawImage(mark, 60, 75 - mh / 2, Math.min(mw, 70), mh);
   } catch {
     /* text only */
   }
