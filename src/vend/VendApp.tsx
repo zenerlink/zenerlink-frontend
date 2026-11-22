@@ -258,7 +258,7 @@ function SiteFooter({ className = '', onHelp }: { className?: string; onHelp?: (
   const brand = useBrand();
   return (
     <footer className={`flex-wrap items-center justify-between gap-x-6 gap-y-2 text-xs text-white/35 ${className}`}>
-      <span>&copy; {new Date().getFullYear()} {brand.display_name}</span>
+      <span>&copy; {brand.display_name}</span>
       <span className="flex items-center gap-5">
         {onHelp ? (
           <button type="button" onClick={onHelp} className="hover:text-white/70">Help</button>

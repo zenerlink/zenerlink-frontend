@@ -355,7 +355,6 @@ export function Landing({ nav, signedIn, focus, index = false }: { nav: Nav; sig
     if (index) window.setTimeout(() => document.getElementById('discos')?.scrollIntoView(), 50);
   }, [focus, index]);
   const short = focus ? (focus.name.match(/\(([^)]+)\)/)?.[1] ?? focus.name) : '';
-  const year = new Date().getFullYear();
 
   return (
     <div ref={revealRef} className="min-h-screen bg-black text-white">
@@ -576,7 +575,7 @@ export function Landing({ nav, signedIn, focus, index = false }: { nav: Nav; sig
         <div className="mx-auto flex max-w-6xl flex-col gap-8 px-5 py-12 text-[13px] text-white/40 sm:px-8 md:flex-row md:items-end md:justify-between">
           <div>
             <p className="text-[14px] font-black tracking-[0.34em] text-white/80">{brand.display_name.toUpperCase()}</p>
-            <p className="mt-3">&copy; {year} {brand.display_name}. A product of Zieon Energies Ltd, RC 9519634.</p>
+            <p className="mt-3">&copy; {brand.display_name}. A product of Zieon Energies Ltd, RC 9519634.</p>
           </div>
           <nav className="flex flex-wrap gap-x-6 gap-y-2">
             {SECTIONS.map(([to, label]) => (
@@ -1059,7 +1058,7 @@ function AuthLayout({ nav, children }: { nav: Nav; children: React.ReactNode }) 
       </main>
 
       <footer className="flex w-full flex-wrap items-center justify-between gap-3 px-5 pb-6 text-[12px] text-white/35 sm:px-10">
-        <span>&copy; {new Date().getFullYear()} {brand.display_name}</span>
+        <span>&copy; {brand.display_name}</span>
         <span className="flex gap-5">
           <button type="button" onClick={() => nav('/#how')} className="hover:text-white">How it works</button>
           <button type="button" onClick={() => nav('/#business')} className="hover:text-white">Business</button>

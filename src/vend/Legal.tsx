@@ -46,7 +46,7 @@ export function LegalPage({ doc, nav }: { doc: LegalDoc; nav: Nav }) {
 
       <footer className="border-t border-white/[0.07]">
         <div className="mx-auto flex max-w-3xl flex-wrap justify-between gap-3 px-5 py-8 text-[12px] text-white/35 sm:px-8">
-          <span>&copy; {new Date().getFullYear()} {brand.display_name}. A product of Zieon Energies Ltd, RC 9519634.</span>
+          <span>&copy; {brand.display_name}. A product of Zieon Energies Ltd, RC 9519634.</span>
           <LegalLinks nav={nav} current={doc.path} />
         </div>
       </footer>
